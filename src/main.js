@@ -90,6 +90,63 @@ async function initApp() {
     renderSidebarView();
     updatePlayerUI();
 
+    // Initial Startup "Click to Open" Intro Transition
+    const introOverlay = document.getElementById('intro-overlay');
+    const introPrompt = document.getElementById('intro-prompt');
+    const sidebarPanel = document.getElementById('sidebar-panel');
+    const hudTop = document.getElementById('hud-top');
+    const hudBottom = document.getElementById('hud-bottom-hint');
+
+    let isIntroActive = true;
+    function handleIntroOpen() {
+        if (!isIntroActive) return;
+        isIntroActive = false;
+
+        // 1. Fade out intro prompt & remove click catcher
+        if (introPrompt) {
+            introPrompt.classList.add('opacity-0');
+            setTimeout(() => introPrompt.remove(), 700);
+        }
+        if (introOverlay) {
+            introOverlay.remove();
+        }
+
+        // 2. Slide sidebar panel into view from the left
+        if (sidebarPanel) {
+            sidebarPanel.classList.remove('intro-hidden');
+        }
+
+        // 3. Fade in HUD controls
+        if (hudTop) {
+            hudTop.classList.remove('opacity-0');
+        }
+        if (hudBottom) {
+            hudBottom.classList.remove('opacity-0');
+        }
+
+        // 4. Open turntable cover & glide smoothly to ISO view
+        const currentTurntable = getTurntable();
+        if (currentTurntable) {
+            currentTurntable.revealFromIntro();
+        }
+
+        window.removeEventListener('keydown', onIntroKey);
+        window.removeEventListener('click', handleIntroOpen, true);
+    }
+
+    function onIntroKey(e) {
+        if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            handleIntroOpen();
+        }
+    }
+
+    if (introOverlay) {
+        introOverlay.addEventListener('click', handleIntroOpen);
+    }
+    window.addEventListener('click', handleIntroOpen, { capture: true, once: true });
+    window.addEventListener('keydown', onIntroKey);
+
     window.addEventListener('click', () => closeContextMenu());
 
     // Compact Left-to-Right Light / Dark Theme Toggle

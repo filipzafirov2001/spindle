@@ -39,7 +39,7 @@
 <body class="h-screen w-screen flex flex-col lg:flex-row overflow-hidden">
 
     <!-- LEFT PANEL: SIDEBAR MENU & PLAYER -->
-    <aside class="w-full lg:w-[460px] xl:w-[510px] h-[58%] lg:h-full bg-alabaster border-b lg:border-b-0 lg:border-r border-stone/70 flex flex-col justify-between z-20 shadow-xl lg:shadow-none transition-colors duration-300">
+    <aside id="sidebar-panel" class="w-full lg:w-[460px] xl:w-[510px] h-[58%] lg:h-full bg-alabaster border-b lg:border-b-0 lg:border-r border-stone/70 flex flex-col justify-between z-20 shadow-xl lg:shadow-none transition-colors duration-300 intro-hidden">
         
         <!-- Top Header with Spindle Cursive Logo -->
         <header class="px-6 pt-3.5 pb-2.5 flex items-center justify-between border-b border-stone/50 shrink-0">
@@ -266,7 +266,7 @@
         <div id="canvas-container" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
 
         <!-- Floating Top HUD Controls -->
-        <div class="absolute top-4 left-4 right-4 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+        <div id="hud-top" class="absolute top-4 left-4 right-4 flex flex-wrap items-center justify-between gap-2 pointer-events-none transition-opacity duration-700 opacity-0">
             
             <!-- Top-Left: Compact Left-to-Right Light / Dark Theme Toggle Switch -->
             <button id="btn-theme-toggle" type="button" aria-label="Toggle Light/Dark Theme" class="pointer-events-auto relative w-16 h-8 rounded-full bg-alabaster/85 backdrop-blur-md border border-stone/80 p-1 flex items-center justify-between shadow-sm cursor-pointer transition-colors duration-300">
@@ -299,11 +299,21 @@
         </div>
 
         <!-- Bottom Hint Overlay -->
-        <div class="absolute bottom-4 right-4 pointer-events-none hidden sm:flex items-center gap-2 bg-alabaster/75 backdrop-blur-sm px-3 py-1.5 rounded-full border border-stone/60 text-[11px] font-mono text-muted">
+        <div id="hud-bottom-hint" class="absolute bottom-4 right-4 pointer-events-none hidden sm:flex items-center gap-2 bg-alabaster/75 backdrop-blur-sm px-3 py-1.5 rounded-full border border-stone/60 text-[11px] font-mono text-muted transition-opacity duration-700 opacity-0">
             <span>ORBIT: LEFT DRAG</span>
             <span>•</span>
             <span>ZOOM: SCROLL</span>
         </div>
+
+        <!-- Fine text prompt below the turntable for initial startup -->
+        <div id="intro-prompt" class="absolute inset-x-0 bottom-10 sm:bottom-14 flex flex-col items-center justify-center pointer-events-none transition-opacity duration-700 z-30">
+            <p class="font-serif italic text-lg sm:text-xl text-espresso/60 tracking-[0.25em] select-none transition-colors duration-300 animate-pulse">
+                click to open
+            </p>
+        </div>
+
+        <!-- Fullscreen transparent click-to-open catcher -->
+        <div id="intro-overlay" class="fixed inset-0 z-30 cursor-pointer" title="Click to open"></div>
 
         <!-- Drag & Drop Overlay -->
         <div id="drop-overlay" class="fixed inset-0 bg-espresso/70 backdrop-blur-sm z-50 hidden items-center justify-center p-6">

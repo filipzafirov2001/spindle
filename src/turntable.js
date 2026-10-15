@@ -4,9 +4,10 @@ import { DEFAULT_SYNTH_TRACKS } from './constants.js';
 import { AppState } from './state.js';
 
 export class Turntable3D {
-    constructor(containerId) {
+    constructor(containerId, options = {}) {
         this.container = document.getElementById(containerId);
         this.scene = new THREE.Scene();
+        this.introMode = options.intro !== false;
 
         this.camera = new THREE.PerspectiveCamera(
             35,
@@ -14,8 +15,13 @@ export class Turntable3D {
             0.1,
             100
         );
-        // Startup in ISO view
-        this.camera.position.set(5.9, 5.1, 6.7);
+
+        // Startup pose: front-facing slightly above with closed cover, or default ISO view
+        if (this.introMode) {
+            this.camera.position.set(0, 2.7, 9.2);
+        } else {
+            this.camera.position.set(5.9, 5.1, 6.7);
+        }
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
@@ -36,6 +42,7 @@ export class Turntable3D {
         this.controls.maxPolarAngle = Math.PI / 2 - 0.04;
         this.controls.minDistance = 3.8;
         this.controls.maxDistance = 14;
+        this.controls.enabled = !this.introMode;
 
         // Cancel automated camera transition if user manually grabs the orbit canvas
         this.renderer.domElement.addEventListener('pointerdown', () => {
@@ -51,8 +58,8 @@ export class Turntable3D {
         this.armYaw = 0.0;
         this.armPitch = 0.0;
         this.powerSwitchAngle = -0.35;
-        this.dustCoverOpen = true;
-        this.dustCoverAngle = 1.02;
+        this.dustCoverOpen = !this.introMode;
+        this.dustCoverAngle = this.introMode ? 0.0 : 1.02;
 
         // Spherical smooth camera transition state
         this.camAnim = null;
@@ -1385,6 +1392,18 @@ export class Turntable3D {
         return this.dustCoverOpen;
     }
 
+    revealFromIntro() {
+        this.introMode = false;
+        this.controls.enabled = true;
+        this.dustCoverOpen = true;
+        this.setCameraView('iso');
+
+        const coverBtn = document.getElementById('btn-cover-toggle');
+        if (coverBtn) {
+            coverBtn.className = 'px-2.5 py-1 rounded-xl font-mono text-[11px] text-espresso hover:bg-oatmeal transition';
+        }
+    }
+
     updateRecordLabel(track) {
         if (!this.vinylMat || !track) return;
         const newTex = this.createVinylTexture(track);
@@ -1457,15 +1476,22 @@ export class Turntable3D {
         });
     }
 
+    resize() {
+        if (!this.container || !this.camera || !this.renderer) return;
+        const w = this.container.clientWidth;
+        const h = this.container.clientHeight;
+        if (w === 0 || h === 0) return;
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(w, h);
+    }
+
     bindResize() {
-        window.addEventListener('resize', () => {
-            if (!this.container) return;
-            const w = this.container.clientWidth;
-            const h = this.container.clientHeight;
-            this.camera.aspect = w / h;
-            this.camera.updateProjectionMatrix();
-            this.renderer.setSize(w, h);
-        });
+        window.addEventListener('resize', () => this.resize());
+        if (typeof ResizeObserver !== 'undefined') {
+            this.resizeObserver = new ResizeObserver(() => this.resize());
+            this.resizeObserver.observe(this.container);
+        }
     }
 
     update() {
