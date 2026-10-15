@@ -3,7 +3,8 @@
 ## 1. Visual & 3D Interactive Polish
 - [ ] Audio-Reactive Visuals: Connect a Web Audio `AnalyserNode` to drive the strobe light, platter vibration, and analog VU needle meters on the turntable plinth based on actual frequencies.
 - [ ] Pitch Fader Integration: Connect the 3D pitch fader to audio `playbackRate` for true vinyl pitch/tempo bending.
-- [ ] Interactive Tonearm / Needle Dropping: Allow dragging the 3D tonearm onto specific vinyl grooves to seek track position.
+- [x] Interactive Tonearm / Needle Dropping: Drag the 3D tonearm onto specific vinyl grooves to seek track position, or click directly on grooves.
+- [x] Distinct Needle Lift & Drop Sounds: Procedurally synthesized analog cartridge pop, micro-friction drag, and vinyl touchdown thuds for pausing, track ending, stopping, and manual needle cueing.
 - [ ] Manual Vinyl Scrubbing / Scratching: Interactive disc nudging and scratch sound fx on drag.
 - [ ] RPM Speed Switching: Functional 33⅓ vs 45 RPM toggle with realistic speed pitch shift.
 - [ ] 3-Band Equalizer / Audio FX: Tactile tone knobs (Bass, Mid, Treble) linked to Web Audio BiquadFilterNodes.
