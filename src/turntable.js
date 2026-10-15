@@ -119,42 +119,54 @@ export class Turntable3D {
         canvas.height = 1024;
         const ctx = canvas.getContext('2d');
 
-        // Rich American Black Walnut base gradient
+        // 1. Warm vintage amber walnut / teak base gradient
         const baseGrad = ctx.createLinearGradient(0, 0, 1024, 1024);
-        baseGrad.addColorStop(0.0, '#462714');
-        baseGrad.addColorStop(0.35, '#381E0E');
-        baseGrad.addColorStop(0.7, '#4B2B16');
-        baseGrad.addColorStop(1.0, '#331A0C');
+        baseGrad.addColorStop(0.0, '#9A5429');
+        baseGrad.addColorStop(0.3, '#8A4B24');
+        baseGrad.addColorStop(0.65, '#A35D2E');
+        baseGrad.addColorStop(1.0, '#723A19');
         ctx.fillStyle = baseGrad;
         ctx.fillRect(0, 0, 1024, 1024);
 
-        // Organic flowing cathedral grain waves
-        for (let i = 0; i < 420; i++) {
-            const yBase = (i / 420) * 1024;
-            const amp = 4 + Math.sin(i * 0.07) * 14;
-            const freq = 0.003 + (i % 7) * 0.0006;
-            const phase = (i * 0.37) % (Math.PI * 2);
+        // 2. Golden-honey subsurface warmth wash
+        const warmGlow = ctx.createRadialGradient(512, 512, 80, 512, 512, 720);
+        warmGlow.addColorStop(0.0, 'rgba(230, 150, 75, 0.18)');
+        warmGlow.addColorStop(0.6, 'rgba(185, 105, 45, 0.08)');
+        warmGlow.addColorStop(1.0, 'rgba(95, 45, 18, 0.12)');
+        ctx.fillStyle = warmGlow;
+        ctx.fillRect(0, 0, 1024, 1024);
+
+        // 3. Flowing cathedral grain waves (warm chestnut, honey, and cinnamon tones)
+        for (let i = 0; i < 400; i++) {
+            const yBase = (i / 400) * 1024;
+            const amp = 5 + Math.sin(i * 0.065) * 15;
+            const freq = 0.0028 + (i % 7) * 0.00055;
+            const phase = (i * 0.41) % (Math.PI * 2);
 
             ctx.beginPath();
-            ctx.lineWidth = 1 + (i % 4) * 0.9;
+            ctx.lineWidth = 1.1 + (i % 4) * 0.85;
             ctx.strokeStyle = i % 3 === 0
-                ? 'rgba(18, 8, 3, 0.22)'
+                ? 'rgba(82, 36, 14, 0.20)'     // Rich warm umber grain line
                 : i % 2 === 0
-                    ? 'rgba(98, 58, 30, 0.14)'
-                    : 'rgba(42, 21, 9, 0.18)';
+                    ? 'rgba(212, 136, 68, 0.15)' // Golden-honey highlight ribbon
+                    : 'rgba(116, 56, 24, 0.16)'; // Warm cherry-walnut midtone
 
-            for (let x = 0; x <= 1024; x += 32) {
-                const y = yBase + Math.sin(x * freq + phase) * amp + Math.cos(x * freq * 2.3) * (amp * 0.35);
+            for (let x = 0; x <= 1024; x += 24) {
+                const y = yBase
+                    + Math.sin(x * freq + phase) * amp
+                    + Math.cos(x * freq * 2.2) * (amp * 0.32);
                 if (x === 0) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
             }
             ctx.stroke();
         }
 
-        // Fine open-pore wood flecks
-        ctx.fillStyle = 'rgba(14, 6, 2, 0.28)';
-        for (let i = 0; i < 2400; i++) {
-            const w = 6 + Math.random() * 28;
+        // 4. Fine interlocking wood pores & warm mineral streaks
+        for (let i = 0; i < 1800; i++) {
+            const w = 8 + Math.random() * 26;
+            ctx.fillStyle = i % 4 === 0
+                ? 'rgba(225, 155, 88, 0.10)'
+                : 'rgba(68, 28, 10, 0.18)';
             ctx.fillRect(Math.random() * 1024, Math.random() * 1024, w, 1.2);
         }
 
