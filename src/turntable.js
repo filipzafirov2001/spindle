@@ -119,37 +119,37 @@ export class Turntable3D {
         canvas.height = 1024;
         const ctx = canvas.getContext('2d');
 
-        // 1. Warm vintage amber walnut / teak base gradient
+        // 1. Natural warm vintage walnut & teak base gradient
         const baseGrad = ctx.createLinearGradient(0, 0, 1024, 1024);
-        baseGrad.addColorStop(0.0, '#9A5429');
-        baseGrad.addColorStop(0.3, '#8A4B24');
-        baseGrad.addColorStop(0.65, '#A35D2E');
-        baseGrad.addColorStop(1.0, '#723A19');
+        baseGrad.addColorStop(0.0, '#52341E');
+        baseGrad.addColorStop(0.35, '#422714');
+        baseGrad.addColorStop(0.65, '#5A371F');
+        baseGrad.addColorStop(1.0, '#361E0F');
         ctx.fillStyle = baseGrad;
         ctx.fillRect(0, 0, 1024, 1024);
 
-        // 2. Golden-honey subsurface warmth wash
-        const warmGlow = ctx.createRadialGradient(512, 512, 80, 512, 512, 720);
-        warmGlow.addColorStop(0.0, 'rgba(230, 150, 75, 0.18)');
-        warmGlow.addColorStop(0.6, 'rgba(185, 105, 45, 0.08)');
-        warmGlow.addColorStop(1.0, 'rgba(95, 45, 18, 0.12)');
+        // 2. Subtle warm amber subsurface depth
+        const warmGlow = ctx.createRadialGradient(512, 512, 80, 512, 512, 750);
+        warmGlow.addColorStop(0.0, 'rgba(180, 105, 45, 0.08)');
+        warmGlow.addColorStop(0.5, 'rgba(130, 70, 28, 0.04)');
+        warmGlow.addColorStop(1.0, 'rgba(50, 22, 10, 0.06)');
         ctx.fillStyle = warmGlow;
         ctx.fillRect(0, 0, 1024, 1024);
 
-        // 3. Flowing cathedral grain waves (warm chestnut, honey, and cinnamon tones)
-        for (let i = 0; i < 400; i++) {
-            const yBase = (i / 400) * 1024;
-            const amp = 5 + Math.sin(i * 0.065) * 15;
+        // 3. Flowing cathedral grain waves (deep umber, warm chestnut, and soft caramel)
+        for (let i = 0; i < 420; i++) {
+            const yBase = (i / 420) * 1024;
+            const amp = 4.5 + Math.sin(i * 0.065) * 14;
             const freq = 0.0028 + (i % 7) * 0.00055;
             const phase = (i * 0.41) % (Math.PI * 2);
 
             ctx.beginPath();
-            ctx.lineWidth = 1.1 + (i % 4) * 0.85;
+            ctx.lineWidth = 1.0 + (i % 4) * 0.8;
             ctx.strokeStyle = i % 3 === 0
-                ? 'rgba(82, 36, 14, 0.20)'     // Rich warm umber grain line
+                ? 'rgba(28, 12, 5, 0.22)'      // Deep dark umber grain
                 : i % 2 === 0
-                    ? 'rgba(212, 136, 68, 0.15)' // Golden-honey highlight ribbon
-                    : 'rgba(116, 56, 24, 0.16)'; // Warm cherry-walnut midtone
+                    ? 'rgba(150, 90, 45, 0.12)'  // Subtle warm caramel highlight
+                    : 'rgba(68, 34, 16, 0.18)';  // Medium walnut midtone
 
             for (let x = 0; x <= 1024; x += 24) {
                 const y = yBase
@@ -163,10 +163,10 @@ export class Turntable3D {
 
         // 4. Fine interlocking wood pores & warm mineral streaks
         for (let i = 0; i < 1800; i++) {
-            const w = 8 + Math.random() * 26;
+            const w = 6 + Math.random() * 22;
             ctx.fillStyle = i % 4 === 0
-                ? 'rgba(225, 155, 88, 0.10)'
-                : 'rgba(68, 28, 10, 0.18)';
+                ? 'rgba(160, 100, 50, 0.08)'
+                : 'rgba(28, 12, 5, 0.20)';
             ctx.fillRect(Math.random() * 1024, Math.random() * 1024, w, 1.2);
         }
 
@@ -341,7 +341,7 @@ export class Turntable3D {
         return tex;
     }
 
-    // Deep Jet-Black Procedural Vinyl Grooves + Dynamic Song/Artist Label
+    // Deep Charcoal Vinyl Grooves + Anisotropic Butterfly Sheen + Dynamic Record Label
     createVinylTexture(track) {
         const canvas = document.createElement('canvas');
         canvas.width = 1024;
@@ -349,31 +349,80 @@ export class Turntable3D {
         const ctx = canvas.getContext('2d');
         const cx = 512, cy = 512;
 
-        ctx.fillStyle = '#050505';
+        // Base vinyl tone: deep charcoal/carbon black with subtle warmth
+        ctx.fillStyle = '#0E0D0C';
         ctx.fillRect(0, 0, 1024, 1024);
 
-        const grad1 = ctx.createConicGradient(0.4, cx, cy);
-        grad1.addColorStop(0, 'rgba(255,255,255,0)');
-        grad1.addColorStop(0.12, 'rgba(255,255,255,0.045)');
-        grad1.addColorStop(0.25, 'rgba(255,255,255,0)');
-        grad1.addColorStop(0.5, 'rgba(255,255,255,0)');
-        grad1.addColorStop(0.62, 'rgba(255,255,255,0.045)');
-        grad1.addColorStop(0.75, 'rgba(255,255,255,0)');
-        grad1.addColorStop(1, 'rgba(255,255,255,0)');
+        // 1. Primary vinyl anisotropic reflection lobes (butterfly/bow-tie light sheen)
+        const grad1 = ctx.createConicGradient(0.78, cx, cy);
+        grad1.addColorStop(0.00, 'rgba(255, 255, 255, 0.0)');
+        grad1.addColorStop(0.09, 'rgba(255, 255, 255, 0.12)');
+        grad1.addColorStop(0.125, 'rgba(255, 255, 255, 0.25)');
+        grad1.addColorStop(0.16, 'rgba(255, 255, 255, 0.12)');
+        grad1.addColorStop(0.25, 'rgba(255, 255, 255, 0.0)');
+        grad1.addColorStop(0.50, 'rgba(255, 255, 255, 0.0)');
+        grad1.addColorStop(0.59, 'rgba(255, 255, 255, 0.12)');
+        grad1.addColorStop(0.625, 'rgba(255, 255, 255, 0.25)');
+        grad1.addColorStop(0.66, 'rgba(255, 255, 255, 0.12)');
+        grad1.addColorStop(0.75, 'rgba(255, 255, 255, 0.0)');
+        grad1.addColorStop(1.00, 'rgba(255, 255, 255, 0.0)');
         ctx.fillStyle = grad1;
         ctx.fillRect(0, 0, 1024, 1024);
 
-        for (let r = 175; r < 495; r += 2.0) {
-            const isTrackGap = (r > 265 && r < 270) || (r > 350 && r < 355) || (r > 430 && r < 434);
+        // 2. Secondary orthogonal cross-reflection sheen (4-point studio highlight)
+        const grad2 = ctx.createConicGradient(2.35, cx, cy);
+        grad2.addColorStop(0.00, 'rgba(255, 255, 255, 0.0)');
+        grad2.addColorStop(0.10, 'rgba(255, 255, 255, 0.08)');
+        grad2.addColorStop(0.125, 'rgba(255, 255, 255, 0.16)');
+        grad2.addColorStop(0.15, 'rgba(255, 255, 255, 0.08)');
+        grad2.addColorStop(0.25, 'rgba(255, 255, 255, 0.0)');
+        grad2.addColorStop(0.50, 'rgba(255, 255, 255, 0.0)');
+        grad2.addColorStop(0.60, 'rgba(255, 255, 255, 0.08)');
+        grad2.addColorStop(0.625, 'rgba(255, 255, 255, 0.16)');
+        grad2.addColorStop(0.65, 'rgba(255, 255, 255, 0.08)');
+        grad2.addColorStop(0.75, 'rgba(255, 255, 255, 0.0)');
+        grad2.addColorStop(1.00, 'rgba(255, 255, 255, 0.0)');
+        ctx.fillStyle = grad2;
+        ctx.fillRect(0, 0, 1024, 1024);
+
+        // 3. Dense concentric micro-grooves with track gaps
+        const isTrackGap = (r) => (r > 264 && r < 270) || (r > 348 && r < 354) || (r > 426 && r < 431);
+
+        for (let r = 172; r < 492; r += 1.5) {
             ctx.beginPath();
             ctx.arc(cx, cy, r, 0, Math.PI * 2);
-            ctx.strokeStyle = isTrackGap
-                ? '#020202'
-                : (Math.random() > 0.5 ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.85)');
-            ctx.lineWidth = 1.05;
+            if (isTrackGap(r)) {
+                // Smooth dark glossy unmodulated gap between tracks
+                ctx.strokeStyle = '#080706';
+                ctx.lineWidth = 1.6;
+            } else {
+                // Alternating groove ridges and deep troughs for realistic contrast
+                const isRidge = (Math.round(r * 2) % 3) === 0;
+                ctx.strokeStyle = isRidge
+                    ? 'rgba(255, 255, 255, 0.075)'
+                    : 'rgba(0, 0, 0, 0.70)';
+                ctx.lineWidth = 0.95;
+            }
             ctx.stroke();
         }
 
+        // 4. Glossy outer lead-in groove margin
+        ctx.beginPath();
+        ctx.arc(cx, cy, 496, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        // 5. Glossy inner lead-out runout grooves
+        for (let r = 168; r < 172; r += 1.0) {
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 0.8;
+            ctx.stroke();
+        }
+
+        // 6. Center Vinyl Label
         const labelRadius = 165;
         ctx.beginPath();
         ctx.arc(cx, cy, labelRadius, 0, Math.PI * 2);
@@ -496,11 +545,11 @@ export class Turntable3D {
         const walnutMat = new THREE.MeshPhysicalMaterial({
             map: walnutTex,
             bumpMap: walnutTex,
-            bumpScale: 0.006,
-            roughness: 0.34,
-            metalness: 0.04,
-            clearcoat: 0.48,
-            clearcoatRoughness: 0.24
+            bumpScale: 0.003,
+            roughness: 0.38,
+            metalness: 0.02,
+            clearcoat: 0.35,
+            clearcoatRoughness: 0.26
         });
 
         const brushedTex = this.createBrushedMetalTexture();
@@ -696,77 +745,53 @@ export class Turntable3D {
             this.turntableGroup.add(collar);
         });
 
-        // 3. Recessed Platter Well & Lathe-Turned Die-Cast Strobe Platter
-        const platterWell = new THREE.Mesh(new THREE.CylinderGeometry(1.79, 1.76, 0.024, 64), darkMat);
-        platterWell.position.set(-0.52, 0.315, 0);
+        // 3. Recessed Platter Well & Die-Cast Strobe Platter
+        const platterWell = new THREE.Mesh(new THREE.CylinderGeometry(1.78, 1.78, 0.022, 64), darkMat);
+        platterWell.position.set(-0.52, 0.312, 0);
         this.turntableGroup.add(platterWell);
-
-        const platterWellRim = new THREE.Mesh(
-            new THREE.RingGeometry(1.76, 1.805, 64),
-            machinedAlumMat
-        );
-        platterWellRim.rotation.x = -Math.PI / 2;
-        platterWellRim.position.set(-0.52, 0.321, 0);
-        this.turntableGroup.add(platterWellRim);
 
         this.platterGroup = new THREE.Group();
         this.platterGroup.position.set(-0.52, 0.355, 0);
         this.turntableGroup.add(this.platterGroup);
 
-        // Custom Lathe profile for authentic angled strobe rim and polished lip
-        const platterPoints = [
-            new THREE.Vector2(0.0, -0.055),
-            new THREE.Vector2(1.745, -0.055), // Bottom outer edge
-            new THREE.Vector2(1.745, -0.035), // Lower polished vertical band
-            new THREE.Vector2(1.675, 0.055),  // Angled 45-deg strobe bevel
-            new THREE.Vector2(1.675, 0.082),  // Upper polished rim lip
-            new THREE.Vector2(1.64, 0.082),   // Lip inner edge
-            new THREE.Vector2(1.64, 0.065),   // Recessed mat bed
-            new THREE.Vector2(0.0, 0.065)
-        ];
-        const platterLatheGeo = new THREE.LatheGeometry(platterPoints, 72);
-        const platterBase = new THREE.Mesh(platterLatheGeo, darkMat);
+        // Machined Aluminum Tapered Platter Base
+        const platterBase = new THREE.Mesh(new THREE.CylinderGeometry(1.68, 1.74, 0.11, 64), machinedAlumMat);
         platterBase.castShadow = true;
         platterBase.receiveShadow = true;
         this.platterGroup.add(platterBase);
 
-        // Polished machined rings at top and bottom of the strobe bevel
-        const platterTopRim = new THREE.Mesh(new THREE.CylinderGeometry(1.677, 1.677, 0.026, 72), chromeMat);
-        platterTopRim.position.y = 0.069;
+        // Polished Chrome Upper Rim (sits cleanly atop the tapered platter)
+        const platterTopRim = new THREE.Mesh(new THREE.CylinderGeometry(1.685, 1.68, 0.035, 64), chromeMat);
+        platterTopRim.position.y = 0.065;
         this.platterGroup.add(platterTopRim);
 
-        const platterBottomRim = new THREE.Mesh(new THREE.CylinderGeometry(1.747, 1.747, 0.02, 72), chromeMat);
-        platterBottomRim.position.y = -0.045;
-        this.platterGroup.add(platterBottomRim);
+        // 60 Equally Distanced Vertical Pairs of Stroboscopic Teeth
+        const dotCount = 60;
+        for (let i = 0; i < dotCount; i++) {
+            const angle = (i / dotCount) * Math.PI * 2;
+            const cosA = Math.cos(angle);
+            const sinA = Math.sin(angle);
 
-        // 4-Row Stroboscopic Speed Dots (50Hz / 60Hz for 33 & 45 RPM)
-        const strobeRows = [
-            { r: 1.690, y: 0.036, h: 0.015, w: 0.022, count: 90 },
-            { r: 1.706, y: 0.013, h: 0.020, w: 0.026, count: 72 },
-            { r: 1.722, y: -0.010, h: 0.018, w: 0.024, count: 60 },
-            { r: 1.735, y: -0.028, h: 0.012, w: 0.020, count: 80 }
-        ];
-        strobeRows.forEach(row => {
-            const dotGeo = new THREE.BoxGeometry(row.w, row.h, 0.016);
-            for (let i = 0; i < row.count; i++) {
-                const angle = (i / row.count) * Math.PI * 2;
-                const dot = new THREE.Mesh(dotGeo, chromeMat);
-                dot.position.set(Math.cos(angle) * row.r, row.y, Math.sin(angle) * row.r);
-                dot.rotation.y = -angle + Math.PI / 2;
-                dot.rotation.x = 0.65; // Align flush with the 45-degree strobe bevel
-                this.platterGroup.add(dot);
-            }
-        });
+            const upperTooth = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.032, 0.02), darkMat);
+            upperTooth.position.set(cosA * 1.702, 0.022, sinA * 1.702);
+            upperTooth.rotation.y = -angle;
+            this.platterGroup.add(upperTooth);
+
+            const lowerTooth = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.024, 0.02), darkMat);
+            lowerTooth.position.set(cosA * 1.722, -0.022, sinA * 1.722);
+            lowerTooth.rotation.y = -angle;
+            this.platterGroup.add(lowerTooth);
+        }
 
         // Heavy Damped Rubber Platter Mat with Concentric Ribs & Center Metal Ring
-        const matMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.635, 1.635, 0.026, 64), rubberMat);
-        matMesh.position.y = 0.088;
+        const matMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.635, 1.635, 0.022, 64), rubberMat);
+        matMesh.position.y = 0.082;
         matMesh.receiveShadow = true;
         this.platterGroup.add(matMesh);
 
         const matCenterTrim = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.42, 48), machinedAlumMat);
         matCenterTrim.rotation.x = -Math.PI / 2;
-        matCenterTrim.position.y = 0.1015;
+        matCenterTrim.position.y = 0.094;
         this.platterGroup.add(matCenterTrim);
 
         [0.58, 0.85, 1.12, 1.38, 1.54].forEach(radius => {
@@ -775,13 +800,13 @@ export class Turntable3D {
                 darkMat
             );
             gripRing.rotation.x = Math.PI / 2;
-            gripRing.position.y = 0.101;
+            gripRing.position.y = 0.094;
             this.platterGroup.add(gripRing);
         });
 
         // Precision Center Spindle & Brass Bearing Shoulder
         const spindleCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.12, 0.025, 32), machinedAlumMat);
-        spindleCollar.position.y = 0.102;
+        spindleCollar.position.y = 0.096;
         this.platterGroup.add(spindleCollar);
 
         const spindleShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.040, 0.34, 24), chromeMat);
@@ -809,12 +834,12 @@ export class Turntable3D {
         this.vinylMat = new THREE.MeshPhysicalMaterial({
             map: vinylTex,
             bumpMap: vinylTex,
-            bumpScale: 0.0025,
-            roughness: 0.26,
-            metalness: 0.08,
-            clearcoat: 0.88,
-            clearcoatRoughness: 0.14,
-            envMapIntensity: 0.75
+            bumpScale: 0.003,
+            roughness: 0.22,
+            metalness: 0.10,
+            clearcoat: 0.95,
+            clearcoatRoughness: 0.08,
+            envMapIntensity: 0.95
         });
 
         const recordGeo = new THREE.CylinderGeometry(1.60, 1.60, 0.024, 64);
