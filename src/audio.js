@@ -13,6 +13,9 @@ export class SoundEngine {
         this.onLoadedMetadata = null;
         this.onEnded = null;
 
+        this.lastLiftTime = 0;
+        this.lastDropTime = 0;
+
         if (this.htmlAudio) {
             this.bindAudioEvents();
         }
@@ -133,9 +136,12 @@ export class SoundEngine {
         this.updateCrackleLevel();
     }
 
-    pauseAudio() {
+    pauseAudio(playLiftSound = true) {
         const track = getCurrentTrack();
         if (!track) return;
+        if (playLiftSound) {
+            this.playNeedleLiftSound();
+        }
         if (track.isSynth) {
             this.stopSynthSequencer();
         } else {
@@ -144,7 +150,10 @@ export class SoundEngine {
         this.updateCrackleLevel();
     }
 
-    stopAllAudioOnly() {
+    stopAllAudioOnly(playLiftSound = false) {
+        if (playLiftSound) {
+            this.playNeedleLiftSound();
+        }
         this.stopSynthSequencer();
         if (this.htmlAudio) this.htmlAudio.pause();
         this.updateCrackleLevel();
@@ -157,6 +166,127 @@ export class SoundEngine {
         if (!track.isSynth && this.htmlAudio) {
             this.htmlAudio.currentTime = seconds;
         }
+    }
+
+    // Distinct procedural needle lift sound (damped cantilever pop + micro friction release)
+    playNeedleLiftSound() {
+        this.initContext();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        if (now - this.lastLiftTime < 0.15) return;
+        this.lastLiftTime = now;
+
+        // 1. Damped cartridge pop (stylus snapping free from vinyl groove wall)
+        const popOsc = this.ctx.createOscillator();
+        const popGain = this.ctx.createGain();
+        popOsc.type = 'sine';
+        popOsc.frequency.setValueAtTime(145 + Math.random() * 20, now);
+        popOsc.frequency.exponentialRampToValueAtTime(50, now + 0.05);
+
+        popGain.gain.setValueAtTime(0.001, now);
+        popGain.gain.linearRampToValueAtTime(0.24, now + 0.004);
+        popGain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
+
+        popOsc.connect(popGain);
+        popGain.connect(this.masterGain);
+        popOsc.start(now);
+        popOsc.stop(now + 0.06);
+
+        // 2. High-frequency micro-friction scrape (diamond dragging out of rotating groove)
+        const sampleRate = this.ctx.sampleRate;
+        const bufferSize = Math.floor(sampleRate * 0.045);
+        const noiseBuffer = this.ctx.createBuffer(1, bufferSize, sampleRate);
+        const data = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.35));
+        }
+        const noiseSource = this.ctx.createBufferSource();
+        noiseSource.buffer = noiseBuffer;
+
+        const bandpass = this.ctx.createBiquadFilter();
+        bandpass.type = 'bandpass';
+        bandpass.frequency.setValueAtTime(2900, now);
+        bandpass.frequency.linearRampToValueAtTime(4500, now + 0.04);
+        bandpass.Q.value = 2.4;
+
+        const noiseGain = this.ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.20, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+
+        noiseSource.connect(bandpass);
+        bandpass.connect(noiseGain);
+        noiseGain.connect(this.masterGain);
+        noiseSource.start(now);
+
+        // 3. Low-end mechanical release thud
+        const thudOsc = this.ctx.createOscillator();
+        const thudGain = this.ctx.createGain();
+        thudOsc.type = 'triangle';
+        thudOsc.frequency.setValueAtTime(80, now);
+        thudOsc.frequency.exponentialRampToValueAtTime(38, now + 0.06);
+
+        thudGain.gain.setValueAtTime(0.001, now);
+        thudGain.gain.linearRampToValueAtTime(0.15, now + 0.005);
+        thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+
+        thudOsc.connect(thudGain);
+        thudGain.connect(this.masterGain);
+        thudOsc.start(now);
+        thudOsc.stop(now + 0.065);
+    }
+
+    // Distinct procedural needle drop sound (soft touchdown thud + vinyl seating crackle)
+    playNeedleDropSound() {
+        this.initContext();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        if (now - this.lastDropTime < 0.15) return;
+        this.lastDropTime = now;
+
+        // 1. Soft touchdown thud as diamond stylus meets vinyl surface
+        const dropOsc = this.ctx.createOscillator();
+        const dropGain = this.ctx.createGain();
+        dropOsc.type = 'sine';
+        dropOsc.frequency.setValueAtTime(115 + Math.random() * 15, now);
+        dropOsc.frequency.exponentialRampToValueAtTime(45, now + 0.07);
+
+        dropGain.gain.setValueAtTime(0.001, now);
+        dropGain.gain.linearRampToValueAtTime(0.26, now + 0.005);
+        dropGain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+
+        dropOsc.connect(dropGain);
+        dropGain.connect(this.masterGain);
+        dropOsc.start(now);
+        dropOsc.stop(now + 0.075);
+
+        // 2. Diamond groove seating crackle burst
+        const sampleRate = this.ctx.sampleRate;
+        const bufferSize = Math.floor(sampleRate * 0.075);
+        const noiseBuffer = this.ctx.createBuffer(1, bufferSize, sampleRate);
+        const data = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            let s = (Math.random() * 2 - 1) * 0.16;
+            if (i < bufferSize * 0.25 && Math.random() < 0.12) {
+                s += (Math.random() * 2 - 1) * 0.75;
+            }
+            data[i] = s * (1 - i / bufferSize);
+        }
+        const noiseSource = this.ctx.createBufferSource();
+        noiseSource.buffer = noiseBuffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 1800;
+        filter.Q.value = 1.3;
+
+        const noiseGain = this.ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.18, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.075);
+
+        noiseSource.connect(filter);
+        filter.connect(noiseGain);
+        noiseGain.connect(this.masterGain);
+        noiseSource.start(now);
     }
 
     startSynthSequencer(preset) {

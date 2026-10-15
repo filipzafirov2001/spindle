@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { DEFAULT_SYNTH_TRACKS } from './constants.js';
-import { AppState } from './state.js';
+import { AppState, getCurrentTrack, getViewedPlaylist } from './state.js';
+import { audioEngine } from './audio.js';
+import { formatTime, renderSidebarView, updatePlayerUI, stopPlayback } from './ui.js';
 
 export class Turntable3D {
     constructor(containerId, options = {}) {
@@ -64,11 +66,23 @@ export class Turntable3D {
         this.dustCoverOpen = !this.introMode;
         this.dustCoverAngle = this.introMode ? 0.0 : 1.02;
 
+        // Interactive Tonearm & Needle Dragging State
+        this.isDraggingTonearm = false;
+        this.isHoveringTonearm = false;
+        this.isHoveringRecord = false;
+        this.wasPlayingBeforeDrag = false;
+        this.recordPointerDown = null;
+        this.dropGrooveYaw = 0.44;
+        this.cueTargetYaw = 0.44;
+        this.cueTargetSec = 0;
+        this.cueTargetTrack = null;
+
         // Spherical smooth camera transition state
         this.camAnim = null;
 
         this.initLights();
         this.buildTurntable();
+        this.initTonearmInteraction();
         this.bindResize();
     }
 
@@ -1011,6 +1025,7 @@ export class Turntable3D {
         const sArmMesh = new THREE.Mesh(sArmGeo, chromeMat);
         sArmMesh.castShadow = true;
         this.tonearmPitchGroup.add(sArmMesh);
+        this.sArmMesh = sArmMesh;
 
         // Bayonet Headshell Locking Collar
         const lockingCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.044, 0.044, 0.06, 24), knurledAlumMat);
@@ -1158,6 +1173,19 @@ export class Turntable3D {
         const fingerLiftGeo = new THREE.TubeGeometry(fingerLiftCurve, 20, 0.0065, 12, false);
         const fingerLift = new THREE.Mesh(fingerLiftGeo, chromeMat);
         headshellGroup.add(fingerLift);
+
+        this.headshellGroup = headshellGroup;
+        this.fingerLift = fingerLift;
+        this.needle = needle;
+
+        // Generous invisible hitbox for effortless grabbing from any camera perspective
+        const tonearmHitbox = new THREE.Mesh(
+            new THREE.BoxGeometry(0.75, 0.45, 1.45),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        tonearmHitbox.position.set(0, 0, 1.6);
+        this.tonearmPitchGroup.add(tonearmHitbox);
+        this.tonearmHitbox = tonearmHitbox;
 
         // 6. Tonearm Rest Post, U-Cradle & Flip Lock Latch
         const restBase = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.075, 0.03, 20), machinedAlumMat);
@@ -1430,6 +1458,9 @@ export class Turntable3D {
                 this.mechState = 'DROPPING_RECORD';
             }
         } else {
+            if (this.mechState === 'PLAYING' || this.armPitch < 0.05) {
+                audioEngine.playNeedleLiftSound();
+            }
             this.pendingTrack = track;
             this.pendingAutoPlay = autoPlay;
             this.mechState = 'SWAPPING_OUT';
@@ -1564,7 +1595,44 @@ export class Turntable3D {
                 if (Math.abs(this.armYaw - grooveYaw) < 0.015) {
                     this.armPitch += (0.02 - this.armPitch) * 6 * dt;
                     if (this.armPitch < 0.035) {
+                        audioEngine.playNeedleDropSound();
                         this.mechState = 'PLAYING';
+                    }
+                }
+                break;
+
+            case 'DRAGGING_ARM':
+                this.targetRPM = this.armYaw > 0.32 ? AppState.rpmMode : 0;
+                this.powerSwitchAngle += ((this.targetRPM > 0 ? 0.35 : -0.35) - this.powerSwitchAngle) * 8 * dt;
+                this.armPitch += (0.15 - this.armPitch) * 12 * dt;
+                break;
+
+            case 'DROPPING_NEEDLE':
+                this.targetRPM = AppState.rpmMode;
+                this.powerSwitchAngle += (0.35 - this.powerSwitchAngle) * 8 * dt;
+                this.armYaw += (this.dropGrooveYaw - this.armYaw) * 10 * dt;
+                this.armPitch += (0.018 - this.armPitch) * 7 * dt;
+                if (this.armPitch < 0.035) {
+                    this.mechState = 'PLAYING';
+                }
+                break;
+
+            case 'CUE_TO_GROOVE':
+                this.targetRPM = AppState.rpmMode;
+                this.powerSwitchAngle += (0.35 - this.powerSwitchAngle) * 8 * dt;
+                this.armPitch += (0.15 - this.armPitch) * 10 * dt;
+                if (this.armPitch > 0.11) {
+                    this.armYaw += (this.cueTargetYaw - this.armYaw) * 7 * dt;
+                    if (Math.abs(this.armYaw - this.cueTargetYaw) < 0.02) {
+                        this.dropGrooveYaw = this.cueTargetYaw;
+                        this.mechState = 'DROPPING_NEEDLE';
+                        audioEngine.playNeedleDropSound();
+                        AppState.hasActiveSession = true;
+                        AppState.playbackState = 'PLAYING';
+                        AppState.currentTime = this.cueTargetSec;
+                        audioEngine.playTrack(this.cueTargetTrack, this.cueTargetSec);
+                        renderSidebarView();
+                        updatePlayerUI();
                     }
                 }
                 break;
@@ -1656,5 +1724,241 @@ export class Turntable3D {
         }
 
         this.renderer.render(this.scene, this.camera);
+    }
+
+    initTonearmInteraction() {
+        this.raycaster = new THREE.Raycaster();
+        this.mouse = new THREE.Vector2();
+        this.virtualPlatterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.46);
+        this.planeIntersectPoint = new THREE.Vector3();
+
+        const dom = this.renderer.domElement;
+
+        const hintEl = document.getElementById('needle-drop-hint');
+        const hintLabel = document.getElementById('needle-drop-label');
+        const hintTime = document.getElementById('needle-drop-time');
+        const hintProgress = document.getElementById('needle-drop-progress');
+
+        const updateMouseCoords = (e) => {
+            const rect = dom.getBoundingClientRect();
+            this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        };
+
+        const getInteractiveArmTargets = () => {
+            const targets = [];
+            if (this.tonearmHitbox) targets.push(this.tonearmHitbox);
+            if (this.sArmMesh) targets.push(this.sArmMesh);
+            if (this.headshellGroup) {
+                this.headshellGroup.traverse(child => {
+                    if (child.isMesh) targets.push(child);
+                });
+            }
+            if (this.cueLever) targets.push(this.cueLever);
+            return targets;
+        };
+
+        dom.addEventListener('pointermove', (e) => {
+            if (this.introMode) return;
+            updateMouseCoords(e);
+
+            if (this.isDraggingTonearm) {
+                this.raycaster.setFromCamera(this.mouse, this.camera);
+                if (this.raycaster.ray.intersectPlane(this.virtualPlatterPlane, this.planeIntersectPoint)) {
+                    const dx = 1.65 - this.planeIntersectPoint.x;
+                    const dz = this.planeIntersectPoint.z + 1.05;
+                    let targetYaw = Math.atan2(dx, dz);
+                    targetYaw = THREE.MathUtils.clamp(targetYaw, -0.04, 0.85);
+                    this.armYaw = targetYaw;
+                    this.armPitch = 0.15;
+                    if (this.cueLever) {
+                        this.cueLever.rotation.x = -this.armPitch * 2.4;
+                    }
+
+                    if (hintEl) {
+                        hintEl.classList.remove('hidden');
+                        hintEl.classList.add('flex');
+                        hintEl.style.left = `${Math.min(window.innerWidth - 200, Math.max(20, e.clientX - 75))}px`;
+                        hintEl.style.top = `${Math.max(20, e.clientY - 70)}px`;
+
+                        if (targetYaw < 0.25) {
+                            if (hintLabel) hintLabel.textContent = 'REST CRADLE';
+                            if (hintTime) hintTime.textContent = 'Stop Playback';
+                            if (hintProgress) hintProgress.style.width = '0%';
+                        } else if (targetYaw > 0.80) {
+                            if (hintLabel) hintLabel.textContent = 'RUN-OUT';
+                            if (hintTime) hintTime.textContent = 'End of Track';
+                            if (hintProgress) hintProgress.style.width = '100%';
+                        } else {
+                            const progress = THREE.MathUtils.clamp((targetYaw - 0.44) / 0.34, 0, 1);
+                            const totalSec = AppState.duration || 135;
+                            const curSec = progress * totalSec;
+                            if (hintLabel) hintLabel.textContent = 'DROP NEEDLE';
+                            if (hintTime) hintTime.textContent = `${formatTime(curSec)} (${Math.round(progress * 100)}%)`;
+                            if (hintProgress) hintProgress.style.width = `${Math.round(progress * 100)}%`;
+                        }
+                    }
+                }
+                return;
+            }
+
+            // Not dragging: hover detection
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+            const armHits = this.raycaster.intersectObjects(getInteractiveArmTargets(), false);
+            if (armHits.length > 0) {
+                this.isHoveringTonearm = true;
+                this.isHoveringRecord = false;
+                dom.style.cursor = 'grab';
+                return;
+            }
+
+            this.isHoveringTonearm = false;
+            if (this.recordMesh) {
+                const recordHits = this.raycaster.intersectObject(this.recordMesh, false);
+                if (recordHits.length > 0) {
+                    this.isHoveringRecord = true;
+                    dom.style.cursor = 'pointer';
+                    return;
+                }
+            }
+
+            this.isHoveringRecord = false;
+            dom.style.cursor = '';
+        });
+
+        dom.addEventListener('pointerdown', (e) => {
+            if (this.introMode || this.isTransitioningFromIntro) return;
+            if (e.button !== 0) return;
+            updateMouseCoords(e);
+
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+            const armHits = this.raycaster.intersectObjects(getInteractiveArmTargets(), false);
+
+            if (armHits.length > 0) {
+                this.isDraggingTonearm = true;
+                this.controls.enabled = false;
+                dom.style.cursor = 'grabbing';
+
+                if (!this.dustCoverOpen) {
+                    this.dustCoverOpen = true;
+                }
+
+                const wasDownOnRecord = (this.mechState === 'PLAYING' || (this.armPitch < 0.05 && this.armYaw > 0.35));
+                if (wasDownOnRecord || AppState.playbackState === 'PLAYING') {
+                    audioEngine.playNeedleLiftSound();
+                    this.wasPlayingBeforeDrag = (AppState.playbackState === 'PLAYING');
+                    if (this.wasPlayingBeforeDrag) {
+                        audioEngine.pauseAudio(false);
+                    }
+                } else {
+                    this.wasPlayingBeforeDrag = false;
+                }
+
+                this.armPitch = 0.15;
+                this.mechState = 'DRAGGING_ARM';
+                e.stopPropagation();
+                return;
+            }
+
+            if (this.recordMesh) {
+                const recordHits = this.raycaster.intersectObject(this.recordMesh, false);
+                if (recordHits.length > 0) {
+                    this.recordPointerDown = {
+                        x: e.clientX,
+                        y: e.clientY,
+                        time: Date.now(),
+                        hitPoint: recordHits[0].point.clone()
+                    };
+                }
+            }
+        });
+
+        const handlePointerRelease = (e) => {
+            if (this.introMode) return;
+
+            if (this.isDraggingTonearm) {
+                this.isDraggingTonearm = false;
+                this.controls.enabled = true;
+                dom.style.cursor = this.isHoveringTonearm ? 'grab' : '';
+                if (hintEl) {
+                    hintEl.classList.add('hidden');
+                    hintEl.classList.remove('flex');
+                }
+
+                if (this.armYaw >= 0.36) {
+                    const progress = THREE.MathUtils.clamp((this.armYaw - 0.44) / 0.34, 0, 1);
+                    const totalSec = AppState.duration || 135;
+                    const targetSec = progress * totalSec;
+
+                    let track = getCurrentTrack();
+                    if (!track) {
+                        const pl = getViewedPlaylist() || AppState.playlists[0];
+                        if (pl && pl.trackIds.length > 0) {
+                            AppState.playingPlaylistId = pl.id;
+                            AppState.currentIndex = 0;
+                            track = getCurrentTrack();
+                        }
+                    }
+
+                    if (track) {
+                        AppState.hasActiveSession = true;
+                        AppState.playbackState = 'PLAYING';
+                        AppState.currentTime = targetSec;
+                        audioEngine.playTrack(track, targetSec);
+                        audioEngine.playNeedleDropSound();
+
+                        this.mechState = 'DROPPING_NEEDLE';
+                        this.targetRPM = AppState.rpmMode;
+                        this.dropGrooveYaw = this.armYaw;
+                    } else {
+                        this.mechState = 'IDLE_STOPPED';
+                    }
+                    renderSidebarView();
+                    updatePlayerUI();
+                } else {
+                    audioEngine.playNeedleLiftSound();
+                    stopPlayback();
+                }
+                return;
+            }
+
+            if (this.recordPointerDown) {
+                const dx = Math.abs(e.clientX - this.recordPointerDown.x);
+                const dy = Math.abs(e.clientY - this.recordPointerDown.y);
+                const dt = Date.now() - this.recordPointerDown.time;
+                if (dx < 8 && dy < 8 && dt < 450) {
+                    const pt = this.recordPointerDown.hitPoint;
+                    const distFromSpindle = Math.hypot(pt.x - (-0.52), pt.z);
+                    const progress = THREE.MathUtils.clamp(1.0 - (distFromSpindle - 0.80) / (1.58 - 0.80), 0, 1);
+                    const targetYaw = 0.44 + progress * 0.34;
+                    const totalSec = AppState.duration || 135;
+                    const targetSec = progress * totalSec;
+
+                    let track = getCurrentTrack();
+                    if (!track) {
+                        const pl = getViewedPlaylist() || AppState.playlists[0];
+                        if (pl && pl.trackIds.length > 0) {
+                            AppState.playingPlaylistId = pl.id;
+                            AppState.currentIndex = 0;
+                            track = getCurrentTrack();
+                        }
+                    }
+
+                    if (track) {
+                        audioEngine.playNeedleLiftSound();
+                        this.cueTargetYaw = targetYaw;
+                        this.cueTargetSec = targetSec;
+                        this.cueTargetTrack = track;
+                        this.mechState = 'CUE_TO_GROOVE';
+                        this.targetRPM = AppState.rpmMode;
+                        if (!this.dustCoverOpen) this.dustCoverOpen = true;
+                    }
+                }
+                this.recordPointerDown = null;
+            }
+        };
+
+        window.addEventListener('pointerup', handlePointerRelease);
+        window.addEventListener('pointercancel', handlePointerRelease);
     }
 }

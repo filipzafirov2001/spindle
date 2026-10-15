@@ -1191,6 +1191,7 @@ export function togglePlayPause() {
 }
 
 export function stopPlayback() {
+    audioEngine.playNeedleLiftSound();
     AppState.playbackState = 'STOPPED';
     AppState.currentTime = 0;
     audioEngine.stopAllAudioOnly();
@@ -1202,6 +1203,7 @@ export function stopPlayback() {
 }
 
 export function handleTrackEnded() {
+    audioEngine.playNeedleLiftSound();
     const pl = getPlayingPlaylist();
     if (!pl || !pl.trackIds.length) return;
 
