@@ -1,0 +1,3437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spindle // Music Player</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Cormorant Garamond, Plus Jakarta Sans, JetBrains Mono, Caveat -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <!-- Three.js & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        alabaster: '#F6F4F0',
+                        oatmeal: '#EBE7DF',
+                        stone: '#DCD6CB',
+                        espresso: '#1E1B18',
+                        walnut: '#5C3A21',
+                        terracotta: '#C85A32',
+                        brass: '#D4AF37',
+                        muted: '#78716C'
+                    },
+                    fontFamily: {
+                        serif: ['"Cormorant Garamond"', 'serif'],
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                        cursive: ['"Caveat"', 'cursive']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body {
+            background-color: #F6F4F0;
+            color: #1E1B18;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            overflow: hidden;
+            transition: background-color 0.35s ease, color 0.35s ease;
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #DCD6CB;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #C85A32;
+        }
+
+        /* Custom Range Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+            cursor: pointer;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            height: 4px;
+            border-radius: 999px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 14px;
+            width: 14px;
+            border-radius: 50%;
+            background: #C85A32;
+            margin-top: -5px;
+            box-shadow: 0 2px 6px rgba(200, 90, 50, 0.4);
+            transition: transform 0.15s ease, background-color 0.15s ease;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            background: #a94622;
+        }
+
+        /* Subtle rotating animation for mini album art */
+        @keyframes slowSpin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .spin-art {
+            animation: slowSpin 14s linear infinite;
+            animation-play-state: paused;
+        }
+        .spin-art.playing {
+            animation-play-state: running;
+        }
+
+        /* Soundbar equalizer animation */
+        @keyframes eqBar1 { 0%, 100% { height: 4px; } 50% { height: 14px; } }
+        @keyframes eqBar2 { 0%, 100% { height: 14px; } 40% { height: 5px; } 80% { height: 12px; } }
+        @keyframes eqBar3 { 0%, 100% { height: 6px; } 30% { height: 15px; } 70% { height: 4px; } }
+        .eq-bar-1 { animation: eqBar1 0.8s ease-in-out infinite; }
+        .eq-bar-2 { animation: eqBar2 0.7s ease-in-out infinite; }
+        .eq-bar-3 { animation: eqBar3 0.9s ease-in-out infinite; }
+
+        .drag-over-top {
+            border-top: 2px solid #C85A32 !important;
+        }
+        .drag-over-bottom {
+            border-bottom: 2px solid #C85A32 !important;
+        }
+
+        /* Warm, Low-Contrast Dark Theme Overrides (Easy on the eyes) */
+        body.dark-theme {
+            background-color: #211E1B;
+            color: #DDD7CE;
+        }
+        body.dark-theme .bg-alabaster {
+            background-color: #23201D !important;
+        }
+        body.dark-theme .bg-alabaster\/85,
+        body.dark-theme .bg-alabaster\/75,
+        body.dark-theme .bg-alabaster\/60,
+        body.dark-theme .bg-alabaster\/90 {
+            background-color: rgba(38, 34, 30, 0.88) !important;
+        }
+        body.dark-theme .bg-oatmeal,
+        body.dark-theme .bg-oatmeal\/70,
+        body.dark-theme .bg-oatmeal\/60,
+        body.dark-theme .bg-oatmeal\/50,
+        body.dark-theme .bg-oatmeal\/40 {
+            background-color: #2B2723 !important;
+        }
+        body.dark-theme .text-espresso {
+            color: #DDD7CE !important;
+        }
+        body.dark-theme .text-muted {
+            color: #9A9288 !important;
+        }
+        body.dark-theme .border-stone,
+        body.dark-theme .border-stone\/80,
+        body.dark-theme .border-stone\/70,
+        body.dark-theme .border-stone\/60,
+        body.dark-theme .border-stone\/50,
+        body.dark-theme .border-stone\/40 {
+            border-color: #38332E !important;
+        }
+        body.dark-theme .bg-stone,
+        body.dark-theme .bg-stone\/60 {
+            background-color: #3A342F !important;
+        }
+        body.dark-theme .hover\:bg-oatmeal:hover {
+            background-color: #342F2A !important;
+        }
+        body.dark-theme .hover\:bg-alabaster\/60:hover {
+            background-color: rgba(48, 43, 38, 0.75) !important;
+        }
+        body.dark-theme #spindle-logo-text {
+            fill: #DDD7CE;
+        }
+        body.dark-theme #viewport-main {
+            background: radial-gradient(circle at center, #2E2925 0%, #231F1C 62%, #1B1815 100%) !important;
+        }
+        body.dark-theme #vol-fill {
+            background-color: #C8C0B6 !important;
+        }
+        body.dark-theme ::-webkit-scrollbar-thumb {
+            background: #423B35;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col lg:flex-row overflow-hidden">
+
+    <!-- LEFT PANEL: SIDEBAR MENU & PLAYER -->
+    <aside class="w-full lg:w-[460px] xl:w-[510px] h-[58%] lg:h-full bg-alabaster border-b lg:border-b-0 lg:border-r border-stone/70 flex flex-col justify-between z-20 shadow-xl lg:shadow-none transition-colors duration-300">
+        
+        <!-- Top Header with Spindle Cursive Logo -->
+        <header class="px-6 pt-3.5 pb-2.5 flex items-center justify-between border-b border-stone/50 shrink-0">
+            <div class="flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 185 48" class="h-9 w-auto -ml-1">
+                    <text id="spindle-logo-text" x="4" y="36" font-family="'Caveat', cursive" font-weight="600" font-size="42" fill="#1E1B18" class="transition-colors duration-300">Spindle</text>
+                    <circle cx="57" cy="12" r="2.5" fill="#C85A32"/>
+                </svg>
+            </div>
+            <div class="flex items-center gap-2.5">
+                <div class="w-2.5 h-2.5 rounded-full bg-stone shadow-sm" id="status-led"></div>
+                <span id="state-badge" class="font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-oatmeal text-muted border border-stone uppercase tracking-wider">
+                    Stopped
+                </span>
+            </div>
+        </header>
+
+        <!-- TOP OF MENU: CURRENTLY OPENED PLAYLIST HERO (Centered, bigger artwork, details below) -->
+        <section id="opened-playlist-hero" class="hidden px-6 pt-4 pb-4 border-b border-stone/60 bg-alabaster flex-col items-center text-center shrink-0 relative transition-colors duration-300">
+            <!-- Back to Playlists Button (Top-Left of Hero) -->
+            <button id="btn-back-playlists" class="absolute left-5 top-4 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium text-muted hover:text-espresso hover:bg-oatmeal transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+                </svg>
+                <span>Playlists</span>
+            </button>
+
+            <!-- Playlist 3-Dot Options Button (Top-Right of Hero) -->
+            <button id="btn-hero-playlist-menu" class="absolute right-5 top-4 p-2 rounded-xl text-muted hover:text-espresso hover:bg-oatmeal transition" title="Playlist Options">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+                </svg>
+            </button>
+
+            <!-- Centered Larger Playlist Artwork -->
+            <div id="hero-playlist-artwork" title="Click to Change Artwork" class="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-espresso shadow-md flex items-center justify-center overflow-hidden border border-stone cursor-pointer group relative mt-1">
+                <!-- Populated dynamically via JS -->
+            </div>
+
+            <!-- Playlist Title & Metadata Below Artwork -->
+            <h1 id="hero-playlist-title" class="font-serif text-2xl sm:text-3xl font-semibold text-espresso truncate max-w-full leading-tight mt-3">
+                Playlist Title
+            </h1>
+            <p id="hero-playlist-meta" class="font-mono text-[11px] text-muted mt-0.5">
+                0 songs • 00:00
+            </p>
+
+            <!-- Playlist Action Controls Below Metadata -->
+            <div class="flex items-center justify-center gap-2 mt-3">
+                <button id="btn-hero-play" class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-terracotta text-alabaster hover:bg-[#b04b25] text-xs font-medium transition shadow-sm active:scale-95">
+                    <svg class="w-3.5 h-3.5 translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z"/>
+                    </svg>
+                    <span>Play</span>
+                </button>
+
+                <button id="btn-hero-add-songs" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-stone bg-oatmeal/70 hover:bg-oatmeal text-espresso text-xs font-medium transition active:scale-95">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    <span>Add Songs</span>
+                </button>
+
+                <button id="btn-toggle-reorder" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone bg-alabaster hover:bg-oatmeal text-espresso text-xs font-medium transition active:scale-95">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
+                    </svg>
+                    <span id="reorder-btn-label">Reorder</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- MIDDLE SECTION: PLAYLISTS OVERVIEW OR SONGS LIST -->
+        <section class="flex-1 flex flex-col min-h-0 bg-oatmeal/40 transition-colors duration-300">
+            <!-- Section Subheader (Visible in Playlists Overview mode) -->
+            <div id="playlists-overview-header" class="px-6 py-3 flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2 min-w-0">
+                    <h2 class="font-mono text-xs uppercase tracking-wider text-muted font-medium truncate">
+                        Playlists
+                    </h2>
+                    <span id="playlist-count" class="font-mono text-[11px] px-2 py-0.5 rounded-full bg-stone/60 text-espresso shrink-0">2</span>
+                </div>
+                
+                <button id="btn-create-playlist" class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-terracotta text-alabaster hover:bg-[#b04b25] text-xs font-medium transition shadow-sm active:scale-95">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    <span>Create Playlist</span>
+                </button>
+            </div>
+
+            <!-- List Container -->
+            <div id="playlist-container" class="flex-1 overflow-y-auto px-4 py-2.5 space-y-1.5 relative">
+                <!-- Populated dynamically via JS -->
+            </div>
+        </section>
+
+        <!-- BOTTOM SECTION: CURRENTLY PLAYING DECK (Hidden initially until a song/playlist is started) -->
+        <section id="now-playing-section" class="hidden px-6 py-3.5 bg-alabaster border-t border-stone/80 flex-col gap-3 shrink-0 shadow-[0_-4px_20px_rgba(30,27,24,0.06)] transition-colors duration-300">
+            <div class="flex items-center gap-4">
+                <!-- Mini Spinning Disc Cover -->
+                <div class="relative w-14 h-14 rounded-2xl bg-espresso shadow-md flex items-center justify-center overflow-hidden shrink-0 border border-stone">
+                    <div id="cover-disc" class="w-11 h-11 rounded-full border-2 border-neutral-800 flex items-center justify-center spin-art" style="background: radial-gradient(circle, #C85A32 0%, #C85A32 28%, #141413 30%, #222 45%, #111 47%, #292929 65%, #111 70%, #1c1c1c 100%);">
+                        <div class="w-2 h-2 rounded-full bg-alabaster"></div>
+                    </div>
+                    <div class="absolute inset-0 bg-gradient-to-tr from-black/30 via-transparent to-white/10 pointer-events-none"></div>
+                </div>
+
+                <!-- Track Metadata -->
+                <div class="flex flex-col min-w-0 flex-1">
+                    <div class="flex items-center gap-2">
+                        <span id="NowPlaying-playlist-name" class="font-mono text-[10px] uppercase tracking-wider text-terracotta font-semibold truncate">Playlist</span>
+                    </div>
+                    <h2 id="current-title" class="font-serif text-xl sm:text-2xl font-semibold text-espresso truncate leading-tight">
+                        Velvet Espresso
+                    </h2>
+                    <p id="current-artist" class="text-xs text-muted truncate font-normal">
+                        Aura Analog Ensemble
+                    </p>
+                </div>
+            </div>
+
+            <!-- Progress & Scrubber -->
+            <div class="flex flex-col gap-1">
+                <div class="relative w-full flex items-center">
+                    <input 
+                        id="seek-slider" 
+                        type="range" 
+                        min="0" 
+                        max="1000" 
+                        value="0" 
+                        class="w-full z-10"
+                        aria-label="Seek time"
+                    >
+                    <div class="w-full h-1 bg-stone rounded-full absolute left-0 pointer-events-none overflow-hidden">
+                        <div id="seek-fill" class="h-full bg-terracotta transition-all duration-75" style="width: 0%;"></div>
+                    </div>
+                </div>
+                <div class="flex justify-between font-mono text-[10px] text-muted">
+                    <span id="time-current">00:00</span>
+                    <span id="time-total">02:15</span>
+                </div>
+            </div>
+
+            <!-- Playback Controls & Volume -->
+            <div class="flex items-center justify-between gap-2">
+                <!-- Transport Buttons -->
+                <div class="flex items-center gap-1 sm:gap-1.5">
+                    <!-- Previous -->
+                    <button id="btn-prev" title="Previous" class="p-2 rounded-xl text-espresso hover:bg-oatmeal active:scale-95 transition">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+                        </svg>
+                    </button>
+
+                    <!-- Play / Pause -->
+                    <button id="btn-play" title="Play / Pause" class="w-10 h-10 rounded-2xl bg-terracotta text-alabaster hover:bg-[#b04b25] active:scale-95 transition-all flex items-center justify-center shadow-md">
+                        <svg id="icon-play" class="w-5 h-5 translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z"/>
+                        </svg>
+                        <svg id="icon-pause" class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                        </svg>
+                    </button>
+
+                    <!-- Stop -->
+                    <button id="btn-stop" title="Stop" class="p-2 rounded-xl text-espresso hover:bg-oatmeal active:scale-95 transition">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M6 6h12v12H6z"/>
+                        </svg>
+                    </button>
+
+                    <!-- Next -->
+                    <button id="btn-next" title="Next" class="p-2 rounded-xl text-espresso hover:bg-oatmeal active:scale-95 transition">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+                        </svg>
+                    </button>
+
+                    <!-- Shuffle -->
+                    <button id="btn-shuffle" title="Shuffle" class="p-1.5 rounded-xl text-muted hover:text-espresso hover:bg-oatmeal active:scale-95 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>
+                        </svg>
+                    </button>
+
+                    <!-- Repeat -->
+                    <button id="btn-repeat" title="Repeat" class="p-1.5 rounded-xl text-muted hover:text-espresso hover:bg-oatmeal active:scale-95 transition relative">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/>
+                        </svg>
+                        <span id="repeat-one-badge" class="hidden absolute top-0 right-0 text-[8px] font-mono bg-terracotta text-alabaster w-3 h-3 rounded-full flex items-center justify-center">1</span>
+                    </button>
+                </div>
+
+                <!-- Volume & Crackle Toggle -->
+                <div class="flex items-center gap-2.5">
+                    <button id="btn-crackle" title="Toggle Surface Crackle" class="px-2 py-1 rounded-lg border border-stone bg-oatmeal/70 hover:bg-oatmeal text-[10px] font-mono text-espresso flex items-center gap-1.5 transition">
+                        <span id="crackle-dot" class="w-2 h-2 rounded-full bg-terracotta"></span>
+                        <span>CRACKLE</span>
+                    </button>
+
+                    <div class="hidden sm:flex items-center gap-1.5 w-20">
+                        <button id="btn-mute" class="text-muted hover:text-espresso transition" title="Mute/Unmute">
+                            <svg id="icon-vol" class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+                            </svg>
+                        </button>
+                        <div class="relative flex-1 flex items-center">
+                            <input id="vol-slider" type="range" min="0" max="1" step="0.01" value="0.8" class="w-full z-10" aria-label="Volume">
+                            <div class="w-full h-1 bg-stone rounded-full absolute left-0 pointer-events-none overflow-hidden">
+                                <div id="vol-fill" class="h-full bg-espresso" style="width: 80%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </aside>
+
+    <!-- RIGHT PANEL: INTERACTIVE 3D RECORD PLAYER -->
+    <main id="viewport-main" class="flex-1 h-[42%] lg:h-full relative bg-gradient-to-br from-[#EFECE6] via-[#E5DFD5] to-[#D6CFC2] overflow-hidden transition-colors duration-500">
+        <!-- Three.js Canvas Mount -->
+        <div id="canvas-container" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
+
+        <!-- Floating Top HUD Controls -->
+        <div class="absolute top-4 left-4 right-4 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+            
+            <!-- Top-Left: Compact Left-to-Right Light / Dark Theme Toggle Switch -->
+            <button id="btn-theme-toggle" type="button" aria-label="Toggle Light/Dark Theme" class="pointer-events-auto relative w-16 h-8 rounded-full bg-alabaster/85 backdrop-blur-md border border-stone/80 p-1 flex items-center justify-between shadow-sm cursor-pointer transition-colors duration-300">
+                <!-- Sliding Pill Thumb -->
+                <div id="theme-toggle-thumb" class="w-6 h-6 rounded-full bg-terracotta shadow-xs transition-transform duration-300 ease-out translate-x-0"></div>
+                <!-- Centered Sun / Moon Icons -->
+                <div class="absolute inset-1 flex items-center justify-between pointer-events-none">
+                    <span id="theme-label-light" class="w-6 h-6 flex items-center justify-center text-alabaster transition-colors duration-300">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="4"/>
+                            <path stroke-linecap="round" d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"/>
+                        </svg>
+                    </span>
+                    <span id="theme-label-dark" class="w-6 h-6 flex items-center justify-center text-muted transition-colors duration-300">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+                        </svg>
+                    </span>
+                </div>
+            </button>
+
+            <!-- Top-Right: Manual Camera Preset Angles & Dust Cover Toggle -->
+            <div class="pointer-events-auto flex items-center gap-1.5 bg-alabaster/85 backdrop-blur-md border border-stone/80 p-1.5 rounded-2xl shadow-sm transition-colors duration-300">
+                <button data-cam="iso" class="cam-btn px-2.5 py-1 rounded-xl font-mono text-[11px] bg-terracotta text-alabaster transition">ISO</button>
+                <button data-cam="top" class="cam-btn px-2.5 py-1 rounded-xl font-mono text-[11px] text-espresso hover:bg-oatmeal transition">TOP</button>
+                <button data-cam="side" class="cam-btn px-2.5 py-1 rounded-xl font-mono text-[11px] text-espresso hover:bg-oatmeal transition">SIDE</button>
+                <div class="h-4 w-[1px] bg-stone mx-0.5"></div>
+                <button id="btn-cover-toggle" class="px-2.5 py-1 rounded-xl font-mono text-[11px] text-espresso hover:bg-oatmeal transition" title="Open / Close Acrylic Dust Cover">COVER</button>
+            </div>
+        </div>
+
+        <!-- Bottom Hint Overlay -->
+        <div class="absolute bottom-4 right-4 pointer-events-none hidden sm:flex items-center gap-2 bg-alabaster/75 backdrop-blur-sm px-3 py-1.5 rounded-full border border-stone/60 text-[11px] font-mono text-muted">
+            <span>ORBIT: LEFT DRAG</span>
+            <span>•</span>
+            <span>ZOOM: SCROLL</span>
+        </div>
+
+        <!-- Drag & Drop Overlay -->
+        <div id="drop-overlay" class="fixed inset-0 bg-espresso/70 backdrop-blur-sm z-50 hidden items-center justify-center p-6">
+            <div class="border-2 border-dashed border-alabaster rounded-3xl p-12 text-center max-w-md">
+                <p class="font-serif text-3xl text-alabaster mb-2">Drop Audio Files</p>
+                <p class="font-mono text-xs text-stone uppercase tracking-wider">Files will be added to your playlist</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- FLOATING 3-DOT CONTEXT MENU -->
+    <div id="context-menu" class="fixed z-50 hidden min-w-[190px] bg-alabaster border border-stone rounded-2xl shadow-xl py-1.5 text-xs text-espresso overflow-hidden"></div>
+
+    <!-- MODAL OVERLAY -->
+    <div id="modal-backdrop" class="fixed inset-0 bg-espresso/50 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
+        <div id="modal-card" class="bg-alabaster border border-stone rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div class="px-6 py-4 border-b border-stone/60 flex items-center justify-between">
+                <h3 id="modal-title" class="font-serif text-2xl font-semibold text-espresso">Modal Title</h3>
+                <button id="modal-close" class="p-1.5 rounded-xl text-muted hover:text-espresso hover:bg-oatmeal transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div id="modal-body" class="p-6 space-y-4 max-h-[75vh] overflow-y-auto"></div>
+        </div>
+    </div>
+
+    <!-- Hidden Inputs & HTML5 Audio Element -->
+    <input id="file-upload-audio" type="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac" multiple class="hidden">
+    <input id="file-upload-artwork" type="file" accept="image/*" class="hidden">
+    <audio id="html5-audio" preload="metadata"></audio>
+
+    <script>
+        /***********************************************************************
+         * 1. PRESET PALETTES & DEFAULT TRACKS
+         ***********************************************************************/
+        const VINYL_COLORS = [
+            { name: 'Terracotta', label: '#C85A32', accent: '#F4A261' },
+            { name: 'Vintage Blue', label: '#2A6F97', accent: '#89C2D9' },
+            { name: 'Forest Green', label: '#386641', accent: '#A7C957' },
+            { name: 'Deep Crimson', label: '#9B2226', accent: '#E9D8A6' },
+            { name: 'Warm Brass', label: '#D4AF37', accent: '#FFF3B0' },
+            { name: 'Velvet Plum', label: '#6D597A', accent: '#E56B6F' }
+        ];
+
+        const DEFAULT_SYNTH_TRACKS = [
+            {
+                id: 'synth-1',
+                title: 'Velvet Espresso',
+                artist: 'Aura Analog Ensemble',
+                duration: 135,
+                isSynth: true,
+                synthPreset: 'lofi_jazz',
+                labelColor: '#C85A32',
+                accentColor: '#F4A261'
+            },
+            {
+                id: 'synth-2',
+                title: 'Midnight on Seine',
+                artist: 'The Blue Note Trio',
+                duration: 162,
+                isSynth: true,
+                synthPreset: 'ambient_waltz',
+                labelColor: '#2A6F97',
+                accentColor: '#89C2D9'
+            },
+            {
+                id: 'synth-3',
+                title: 'Kyoto Raindrops',
+                artist: 'Kenji Takahashi',
+                duration: 148,
+                isSynth: true,
+                synthPreset: 'zen_pluck',
+                labelColor: '#386641',
+                accentColor: '#A7C957'
+            },
+            {
+                id: 'synth-4',
+                title: 'Solstice 1974',
+                artist: 'Warm Tape Collective',
+                duration: 180,
+                isSynth: true,
+                synthPreset: 'warm_synth',
+                labelColor: '#9B2226',
+                accentColor: '#E9D8A6'
+            }
+        ];
+
+        /***********************************************************************
+         * 2. INDEXEDDB STORAGE FOR PERSISTENT PLAYLISTS & LOCAL AUDIO FILES
+         ***********************************************************************/
+        class LocalLibraryDB {
+            constructor() {
+                this.dbName = 'SpindleMusicPlayerDB';
+                this.dbVersion = 1;
+                this.db = null;
+            }
+
+            async init() {
+                return new Promise((resolve) => {
+                    const req = indexedDB.open(this.dbName, this.dbVersion);
+                    req.onupgradeneeded = (e) => {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains('audioFiles')) {
+                            db.createObjectStore('audioFiles', { keyPath: 'id' });
+                        }
+                        if (!db.objectStoreNames.contains('appState')) {
+                            db.createObjectStore('appState', { keyPath: 'key' });
+                        }
+                    };
+                    req.onsuccess = (e) => {
+                        this.db = e.target.result;
+                        resolve();
+                    };
+                    req.onerror = () => resolve();
+                });
+            }
+
+            async saveAudioBlob(id, blob) {
+                if (!this.db) return;
+                return new Promise((resolve) => {
+                    const tx = this.db.transaction('audioFiles', 'readwrite');
+                    tx.objectStore('audioFiles').put({ id, blob });
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => resolve();
+                });
+            }
+
+            async getAudioBlob(id) {
+                if (!this.db) return null;
+                return new Promise((resolve) => {
+                    const tx = this.db.transaction('audioFiles', 'readonly');
+                    const req = tx.objectStore('audioFiles').get(id);
+                    req.onsuccess = () => resolve(req.result ? req.result.blob : null);
+                    req.onerror = () => resolve(null);
+                });
+            }
+
+            async saveMetadata(tracksMeta, playlists) {
+                if (!this.db) return;
+                return new Promise((resolve) => {
+                    const tx = this.db.transaction('appState', 'readwrite');
+                    const store = tx.objectStore('appState');
+                    const serializableTracks = {};
+                    Object.values(tracksMeta).forEach(t => {
+                        const copy = { ...t };
+                        delete copy.url;
+                        serializableTracks[t.id] = copy;
+                    });
+                    store.put({ key: 'library', tracks: serializableTracks, playlists });
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => resolve();
+                });
+            }
+
+            async loadMetadata() {
+                if (!this.db) return null;
+                return new Promise((resolve) => {
+                    const tx = this.db.transaction('appState', 'readonly');
+                    const req = tx.objectStore('appState').get('library');
+                    req.onsuccess = () => resolve(req.result || null);
+                    req.onerror = () => resolve(null);
+                });
+            }
+        }
+
+        const storageDB = new LocalLibraryDB();
+
+        /***********************************************************************
+         * 3. APPLICATION STATE
+         ***********************************************************************/
+        const AppState = {
+            tracksById: {},
+            playlists: [],
+            uiView: 'PLAYLISTS',         // 'PLAYLISTS' (overview) | 'PLAYLIST_DETAIL' (opened playlist)
+            viewedPlaylistId: null,
+            playingPlaylistId: null,
+            currentIndex: 0,
+            hasActiveSession: false,     // Tracks whether a song has been started
+            isReorderMode: false,
+            playbackState: 'STOPPED',    // 'STOPPED' | 'PLAYING' | 'PAUSED'
+            currentTime: 0,
+            duration: 135,
+            volume: 0.8,
+            isMuted: false,
+            crackleEnabled: true,
+            rpmMode: 33.3,
+            shuffleEnabled: false,
+            repeatMode: 'OFF',           // 'OFF' | 'ALL' | 'ONE'
+            isDarkMode: false,
+            isSeeking: false,
+            artworkUploadCallback: null,
+            pendingAddSongsPlaylistId: null
+        };
+
+        function getPlayingPlaylist() {
+            if (!AppState.playingPlaylistId) return null;
+            return AppState.playlists.find(p => p.id === AppState.playingPlaylistId) || null;
+        }
+
+        function getViewedPlaylist() {
+            return AppState.playlists.find(p => p.id === AppState.viewedPlaylistId) || null;
+        }
+
+        function getCurrentTrack() {
+            const pl = getPlayingPlaylist();
+            if (!pl || !pl.trackIds.length) return null;
+            const tid = pl.trackIds[AppState.currentIndex] || pl.trackIds[0];
+            return AppState.tracksById[tid] || null;
+        }
+
+        async function persistState() {
+            await storageDB.saveMetadata(AppState.tracksById, AppState.playlists);
+        }
+
+        // Lightweight ID3v2 Title/Artist parser for local files
+        async function parseAudioTitleArtist(file) {
+            const rawName = file.name.replace(/\.[^/.]+$/, '');
+            let artist = 'Unknown Artist';
+            let title = rawName;
+            if (rawName.includes(' - ')) {
+                const parts = rawName.split(' - ');
+                artist = parts[0].trim();
+                title = parts.slice(1).join(' - ').trim();
+            }
+
+            try {
+                const buffer = await file.slice(0, 65536).arrayBuffer();
+                const view = new DataView(buffer);
+                if (view.byteLength > 10 && view.getUint8(0) === 0x49 && view.getUint8(1) === 0x44 && view.getUint8(2) === 0x33) {
+                    const version = view.getUint8(3);
+                    const tagSize = ((view.getUint8(6) & 0x7f) << 21) |
+                                    ((view.getUint8(7) & 0x7f) << 14) |
+                                    ((view.getUint8(8) & 0x7f) << 7) |
+                                    (view.getUint8(9) & 0x7f);
+                    const limit = Math.min(view.byteLength, tagSize + 10);
+                    let offset = 10;
+
+                    while (offset + 10 < limit) {
+                        const frameID = String.fromCharCode(
+                            view.getUint8(offset),
+                            view.getUint8(offset + 1),
+                            view.getUint8(offset + 2),
+                            view.getUint8(offset + 3)
+                        );
+                        if (!/^[A-Z0-9]{4}$/.test(frameID)) break;
+
+                        let frameSize = version === 4
+                            ? ((view.getUint8(offset + 4) & 0x7f) << 21) |
+                              ((view.getUint8(offset + 5) & 0x7f) << 14) |
+                              ((view.getUint8(offset + 6) & 0x7f) << 7) |
+                              (view.getUint8(offset + 7) & 0x7f)
+                            : view.getUint32(offset + 4);
+
+                        if (frameSize <= 0 || offset + 10 + frameSize > limit) break;
+
+                        if (frameID === 'TIT2' || frameID === 'TPE1') {
+                            const encoding = view.getUint8(offset + 10);
+                            const bytes = new Uint8Array(buffer, offset + 11, frameSize - 1);
+                            let text = '';
+                            if (encoding === 0 || encoding === 3) {
+                                text = new TextDecoder('utf-8').decode(bytes);
+                            } else if (encoding === 1 || encoding === 2) {
+                                text = new TextDecoder('utf-16').decode(bytes);
+                            }
+                            text = text.replace(/\0/g, '').trim();
+                            if (text) {
+                                if (frameID === 'TIT2') title = text;
+                                if (frameID === 'TPE1') artist = text;
+                            }
+                        }
+                        offset += 10 + frameSize;
+                    }
+                }
+            } catch (e) {}
+
+            return { title, artist };
+        }
+
+        /***********************************************************************
+         * 4. WEB AUDIO ENGINE & LOCAL AUDIO MANAGER
+         ***********************************************************************/
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.masterGain = null;
+                this.crackleGain = null;
+                this.synthInterval = null;
+                this.stepCounter = 0;
+                this.htmlAudio = document.getElementById('html5-audio');
+
+                this.htmlAudio.addEventListener('timeupdate', () => {
+                    const track = getCurrentTrack();
+                    if (track && !track.isSynth && !AppState.isSeeking) {
+                        AppState.currentTime = this.htmlAudio.currentTime;
+                        if (this.htmlAudio.duration && !isNaN(this.htmlAudio.duration)) {
+                            AppState.duration = this.htmlAudio.duration;
+                        }
+                        updatePlayerUI();
+                    }
+                });
+
+                this.htmlAudio.addEventListener('loadedmetadata', () => {
+                    const track = getCurrentTrack();
+                    if (track && !track.isSynth && this.htmlAudio.duration && !isNaN(this.htmlAudio.duration)) {
+                        track.duration = this.htmlAudio.duration;
+                        AppState.duration = this.htmlAudio.duration;
+                        renderSidebarView();
+                        updatePlayerUI();
+                    }
+                });
+
+                this.htmlAudio.addEventListener('ended', () => {
+                    handleTrackEnded();
+                });
+            }
+
+            initContext() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                    this.masterGain = this.ctx.createGain();
+                    this.masterGain.gain.value = AppState.isMuted ? 0 : AppState.volume;
+                    this.masterGain.connect(this.ctx.destination);
+                    this.setupVinylCrackle();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            setupVinylCrackle() {
+                const bufferSize = 2 * this.ctx.sampleRate;
+                const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+
+                for (let i = 0; i < bufferSize; i++) {
+                    let sample = (Math.random() * 2 - 1) * 0.012;
+                    if (Math.random() < 0.0012) {
+                        sample += (Math.random() * 2 - 1) * 0.35;
+                    }
+                    output[i] = sample;
+                }
+
+                const whiteNoise = this.ctx.createBufferSource();
+                whiteNoise.buffer = noiseBuffer;
+                whiteNoise.loop = true;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.value = 1900;
+                filter.Q.value = 0.9;
+
+                this.crackleGain = this.ctx.createGain();
+                this.crackleGain.gain.value = 0;
+
+                whiteNoise.connect(filter);
+                filter.connect(this.crackleGain);
+                this.crackleGain.connect(this.masterGain);
+                whiteNoise.start(0);
+            }
+
+            updateCrackleLevel() {
+                if (!this.crackleGain || !this.ctx) return;
+                const shouldCrackle = AppState.playbackState === 'PLAYING' && AppState.crackleEnabled;
+                this.crackleGain.gain.setTargetAtTime(shouldCrackle ? 0.25 : 0, this.ctx.currentTime, 0.15);
+            }
+
+            setVolume(val) {
+                AppState.volume = val;
+                this.htmlAudio.volume = AppState.isMuted ? 0 : val;
+                if (this.masterGain && this.ctx) {
+                    this.masterGain.gain.setTargetAtTime(AppState.isMuted ? 0 : val, this.ctx.currentTime, 0.05);
+                }
+            }
+
+            playTrack(track, startTime = 0) {
+                if (!track) return;
+                this.initContext();
+                this.stopAllAudioOnly();
+
+                if (track.isSynth) {
+                    this.htmlAudio.pause();
+                    AppState.currentTime = startTime;
+                    AppState.duration = track.duration;
+                    this.startSynthSequencer(track.synthPreset);
+                } else {
+                    if (this.htmlAudio.src !== track.url) {
+                        this.htmlAudio.src = track.url;
+                    }
+                    this.htmlAudio.currentTime = startTime;
+                    this.htmlAudio.volume = AppState.isMuted ? 0 : AppState.volume;
+                    this.htmlAudio.play().catch(() => {});
+                }
+                this.updateCrackleLevel();
+            }
+
+            pauseAudio() {
+                const track = getCurrentTrack();
+                if (!track) return;
+                if (track.isSynth) {
+                    this.stopSynthSequencer();
+                } else {
+                    this.htmlAudio.pause();
+                }
+                this.updateCrackleLevel();
+            }
+
+            stopAllAudioOnly() {
+                this.stopSynthSequencer();
+                this.htmlAudio.pause();
+                this.updateCrackleLevel();
+            }
+
+            seek(seconds) {
+                const track = getCurrentTrack();
+                if (!track) return;
+                AppState.currentTime = seconds;
+                if (!track.isSynth) {
+                    this.htmlAudio.currentTime = seconds;
+                }
+            }
+
+            startSynthSequencer(preset) {
+                this.stopSynthSequencer();
+                const stepMs = 450;
+
+                const triggerStep = () => {
+                    if (AppState.playbackState !== 'PLAYING') return;
+                    this.playSynthStep(preset, this.stepCounter);
+                    this.stepCounter++;
+                };
+
+                triggerStep();
+                this.synthInterval = setInterval(triggerStep, stepMs);
+            }
+
+            stopSynthSequencer() {
+                if (this.synthInterval) {
+                    clearInterval(this.synthInterval);
+                    this.synthInterval = null;
+                }
+            }
+
+            playSynthStep(preset, step) {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+
+                const chords = {
+                    lofi_jazz: [
+                        [261.63, 329.63, 392.00, 493.88],
+                        [220.00, 261.63, 329.63, 392.00],
+                        [293.66, 349.23, 440.00, 523.25],
+                        [196.00, 246.94, 293.66, 349.23]
+                    ],
+                    ambient_waltz: [
+                        [293.66, 369.99, 440.00, 554.37],
+                        [246.94, 329.63, 392.00, 493.88],
+                        [329.63, 392.00, 493.88, 587.33],
+                        [220.00, 277.18, 329.63, 392.00]
+                    ],
+                    zen_pluck: [
+                        [261.63, 293.66, 329.63, 392.00, 440.00, 523.25],
+                        [196.00, 220.00, 261.63, 293.66, 329.63, 392.00]
+                    ],
+                    warm_synth: [
+                        [174.61, 220.00, 261.63, 329.63],
+                        [164.81, 196.00, 246.94, 293.66],
+                        [146.83, 174.61, 220.00, 261.63],
+                        [130.81, 164.81, 196.00, 246.94]
+                    ]
+                };
+
+                const set = chords[preset] || chords.lofi_jazz;
+                const chordIdx = Math.floor(step / 8) % set.length;
+                const currentChord = set[chordIdx];
+
+                if (step % 8 === 0) {
+                    currentChord.forEach((freq, idx) => {
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = preset === 'warm_synth' ? 'sawtooth' : 'sine';
+                        osc.frequency.value = freq;
+
+                        const lp = this.ctx.createBiquadFilter();
+                        lp.type = 'lowpass';
+                        lp.frequency.value = 950;
+
+                        gain.gain.setValueAtTime(0.001, now);
+                        gain.gain.linearRampToValueAtTime(0.055 / (idx * 0.35 + 1), now + 0.12);
+                        gain.gain.exponentialRampToValueAtTime(0.0008, now + 3.2);
+
+                        osc.connect(lp);
+                        lp.connect(gain);
+                        gain.connect(this.masterGain);
+
+                        osc.start(now);
+                        osc.stop(now + 3.3);
+                    });
+                }
+
+                if (step % 2 === 0 || Math.random() > 0.45) {
+                    const noteFreq = currentChord[step % currentChord.length] * (step % 4 === 0 ? 2 : 1);
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+
+                    osc.type = 'triangle';
+                    osc.frequency.value = noteFreq;
+
+                    gain.gain.setValueAtTime(0.001, now);
+                    gain.gain.linearRampToValueAtTime(0.04, now + 0.03);
+                    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.9);
+
+                    osc.connect(gain);
+                    gain.connect(this.masterGain);
+
+                    osc.start(now);
+                    osc.stop(now + 0.95);
+                }
+
+                if (step % 4 === 0) {
+                    const bassOsc = this.ctx.createOscillator();
+                    const bassGain = this.ctx.createGain();
+                    bassOsc.type = 'sine';
+                    bassOsc.frequency.value = currentChord[0] / 2;
+
+                    bassGain.gain.setValueAtTime(0.001, now);
+                    bassGain.gain.linearRampToValueAtTime(0.09, now + 0.04);
+                    bassGain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+
+                    bassOsc.connect(bassGain);
+                    bassGain.connect(this.masterGain);
+
+                    bassOsc.start(now);
+                    bassOsc.stop(now + 0.75);
+                }
+            }
+        }
+
+        const audioEngine = new SoundEngine();
+
+        /***********************************************************************
+         * 5. HIGH-DETAIL THREE.JS 3D RECORD PLAYER
+         ***********************************************************************/
+        class Turntable3D {
+            constructor(containerId) {
+                this.container = document.getElementById(containerId);
+                this.scene = new THREE.Scene();
+
+                this.camera = new THREE.PerspectiveCamera(
+                    35,
+                    this.container.clientWidth / this.container.clientHeight,
+                    0.1,
+                    100
+                );
+                // Startup in ISO view
+                this.camera.position.set(5.9, 5.1, 6.7);
+
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+                this.renderer.toneMappingExposure = 1.02;
+                this.container.appendChild(this.renderer.domElement);
+
+                // Dark-ceiling studio environment map so horizontal vinyl stays deep black while vertical chrome shines
+                this.scene.environment = this.createStudioEnvMap();
+
+                this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+                this.controls.enableDamping = true;
+                this.controls.dampingFactor = 0.06;
+                this.controls.target.set(0, 0.2, 0);
+                this.controls.maxPolarAngle = Math.PI / 2 - 0.04;
+                this.controls.minDistance = 3.8;
+                this.controls.maxDistance = 14;
+
+                // Cancel automated camera transition if user manually grabs the orbit canvas
+                this.renderer.domElement.addEventListener('pointerdown', () => {
+                    this.camAnim = null;
+                });
+
+                this.clock = new THREE.Clock();
+                this.currentRPM = 0;
+                this.targetRPM = 0;
+
+                this.mechState = 'IDLE_STOPPED';
+                this.recordHeight = 0.0;
+                this.armYaw = 0.0;
+                this.armPitch = 0.0;
+                this.powerSwitchAngle = -0.35;
+                this.dustCoverOpen = true;
+                this.dustCoverAngle = 1.02;
+
+                // Spherical smooth camera transition state
+                this.camAnim = null;
+
+                this.initLights();
+                this.buildTurntable();
+                this.bindResize();
+            }
+
+            createStudioEnvMap() {
+                const canvas = document.createElement('canvas');
+                canvas.width = 512;
+                canvas.height = 256;
+                const ctx = canvas.getContext('2d');
+
+                const bg = ctx.createLinearGradient(0, 0, 0, 256);
+                bg.addColorStop(0, '#0D0C0B');
+                bg.addColorStop(0.38, '#1A1816');
+                bg.addColorStop(0.50, '#C8C0B4');
+                bg.addColorStop(0.62, '#2A2622');
+                bg.addColorStop(1, '#0F0E0D');
+                ctx.fillStyle = bg;
+                ctx.fillRect(0, 0, 512, 256);
+
+                ctx.fillStyle = '#FFF9F0';
+                ctx.fillRect(40, 114, 140, 26);
+                ctx.fillStyle = '#FFE4C4';
+                ctx.fillRect(320, 116, 130, 24);
+
+                const tex = new THREE.CanvasTexture(canvas);
+                tex.mapping = THREE.EquirectangularReflectionMapping;
+                return tex;
+            }
+
+            initLights() {
+                this.ambientLight = new THREE.AmbientLight(0xFFF8EE, 0.50);
+                this.scene.add(this.ambientLight);
+
+                this.dirLight = new THREE.DirectionalLight(0xFFF5E4, 1.18);
+                this.dirLight.position.set(-4.2, 9.2, 5.8);
+                this.dirLight.castShadow = true;
+                this.dirLight.shadow.mapSize.width = 2048;
+                this.dirLight.shadow.mapSize.height = 2048;
+                this.dirLight.shadow.camera.near = 1;
+                this.dirLight.shadow.camera.far = 25;
+                const d = 5;
+                this.dirLight.shadow.camera.left = -d;
+                this.dirLight.shadow.camera.right = d;
+                this.dirLight.shadow.camera.top = d;
+                this.dirLight.shadow.camera.bottom = -d;
+                this.dirLight.shadow.bias = -0.0005;
+                this.scene.add(this.dirLight);
+
+                this.rimLight = new THREE.DirectionalLight(0xDCE6F2, 0.52);
+                this.rimLight.position.set(6.5, 3.0, -5.2);
+                this.scene.add(this.rimLight);
+
+                this.strobeLight = new THREE.PointLight(0xFF5A1F, 0.9, 1.9);
+                this.strobeLight.position.set(-1.82, 0.55, 1.38);
+                this.scene.add(this.strobeLight);
+
+                this.targetLight = new THREE.PointLight(0xFFCC77, 0.0, 1.8);
+                this.targetLight.position.set(0.75, 0.58, 1.22);
+                this.scene.add(this.targetLight);
+            }
+
+            setTheme(isDark) {
+                if (isDark) {
+                    this.ambientLight.intensity = 0.42;
+                    this.dirLight.intensity = 1.02;
+                    this.renderer.toneMappingExposure = 0.96;
+                } else {
+                    this.ambientLight.intensity = 0.50;
+                    this.dirLight.intensity = 1.18;
+                    this.renderer.toneMappingExposure = 1.02;
+                }
+            }
+
+            createWalnutTexture() {
+                const canvas = document.createElement('canvas');
+                canvas.width = 1024;
+                canvas.height = 1024;
+                const ctx = canvas.getContext('2d');
+
+                const baseGrad = ctx.createLinearGradient(0, 0, 1024, 1024);
+                baseGrad.addColorStop(0, '#4E2E18');
+                baseGrad.addColorStop(0.5, '#3E2210');
+                baseGrad.addColorStop(1, '#4A2A15');
+                ctx.fillStyle = baseGrad;
+                ctx.fillRect(0, 0, 1024, 1024);
+
+                for (let i = 0; i < 900; i++) {
+                    ctx.fillStyle = i % 3 === 0
+                        ? 'rgba(22, 10, 4, 0.18)'
+                        : i % 2 === 0
+                            ? 'rgba(110, 68, 36, 0.11)'
+                            : 'rgba(55, 30, 14, 0.14)';
+                    const y = Math.random() * 1024;
+                    const h = 1 + Math.random() * 4;
+                    ctx.fillRect(0, y, 1024, h);
+                }
+
+                ctx.fillStyle = 'rgba(18, 8, 3, 0.25)';
+                for (let i = 0; i < 1600; i++) {
+                    ctx.fillRect(Math.random() * 1024, Math.random() * 1024, 8 + Math.random() * 24, 1);
+                }
+
+                const tex = new THREE.CanvasTexture(canvas);
+                tex.wrapS = THREE.RepeatWrapping;
+                tex.wrapT = THREE.RepeatWrapping;
+                tex.anisotropy = 4;
+                return tex;
+            }
+
+            createBrushedMetalTexture() {
+                const canvas = document.createElement('canvas');
+                canvas.width = 512;
+                canvas.height = 512;
+                const ctx = canvas.getContext('2d');
+
+                ctx.fillStyle = '#D8D4CD';
+                ctx.fillRect(0, 0, 512, 512);
+
+                for (let i = 0; i < 1400; i++) {
+                    const shade = 200 + Math.floor(Math.random() * 35);
+                    ctx.fillStyle = `rgba(${shade}, ${shade - 2}, ${shade - 5}, 0.18)`;
+                    ctx.fillRect(0, Math.random() * 512, 512, 1);
+                }
+
+                const tex = new THREE.CanvasTexture(canvas);
+                tex.wrapS = THREE.RepeatWrapping;
+                tex.wrapT = THREE.RepeatWrapping;
+                return tex;
+            }
+
+            createPitchScaleTexture() {
+                const canvas = document.createElement('canvas');
+                canvas.width = 128;
+                canvas.height = 512;
+                const ctx = canvas.getContext('2d');
+
+                ctx.fillStyle = '#23201D';
+                ctx.fillRect(0, 0, 128, 512);
+
+                ctx.strokeStyle = '#BDB6AC';
+                ctx.fillStyle = '#DCD6CB';
+                ctx.font = 'bold 18px "JetBrains Mono", monospace';
+                ctx.textAlign = 'right';
+
+                const labels = ['-8', '-6', '-4', '-2', '0', '+2', '+4', '+6', '+8'];
+                for (let i = 0; i <= 32; i++) {
+                    const y = 36 + (i / 32) * 440;
+                    const isMajor = i % 4 === 0;
+                    ctx.lineWidth = isMajor ? 3 : 1.5;
+                    ctx.beginPath();
+                    ctx.moveTo(isMajor ? 42 : 54, y);
+                    ctx.lineTo(70, y);
+                    ctx.stroke();
+
+                    if (isMajor) {
+                        const lbl = labels[i / 4];
+                        ctx.fillStyle = lbl === '0' ? '#C85A32' : '#DCD6CB';
+                        ctx.fillText(lbl, 36, y + 6);
+                    }
+                }
+
+                return new THREE.CanvasTexture(canvas);
+            }
+
+            // Deep Jet-Black Procedural Vinyl Grooves + Dynamic Song/Artist Label
+            createVinylTexture(track) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 1024;
+                canvas.height = 1024;
+                const ctx = canvas.getContext('2d');
+                const cx = 512, cy = 512;
+
+                ctx.fillStyle = '#050505';
+                ctx.fillRect(0, 0, 1024, 1024);
+
+                const grad1 = ctx.createConicGradient(0.4, cx, cy);
+                grad1.addColorStop(0, 'rgba(255,255,255,0)');
+                grad1.addColorStop(0.12, 'rgba(255,255,255,0.045)');
+                grad1.addColorStop(0.25, 'rgba(255,255,255,0)');
+                grad1.addColorStop(0.5, 'rgba(255,255,255,0)');
+                grad1.addColorStop(0.62, 'rgba(255,255,255,0.045)');
+                grad1.addColorStop(0.75, 'rgba(255,255,255,0)');
+                grad1.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = grad1;
+                ctx.fillRect(0, 0, 1024, 1024);
+
+                for (let r = 175; r < 495; r += 2.0) {
+                    const isTrackGap = (r > 265 && r < 270) || (r > 350 && r < 355) || (r > 430 && r < 434);
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                    ctx.strokeStyle = isTrackGap
+                        ? '#020202'
+                        : (Math.random() > 0.5 ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.85)');
+                    ctx.lineWidth = 1.05;
+                    ctx.stroke();
+                }
+
+                const labelRadius = 165;
+                ctx.beginPath();
+                ctx.arc(cx, cy, labelRadius, 0, Math.PI * 2);
+                ctx.fillStyle = (track && track.labelColor) || '#C85A32';
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, labelRadius - 14, 0, Math.PI * 2);
+                ctx.strokeStyle = (track && track.accentColor) || '#F6F4F0';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(cx, cy, labelRadius - 24, Math.PI, Math.PI * 2);
+                ctx.fillStyle = '#F6F4F0';
+                ctx.fill();
+                ctx.restore();
+
+                ctx.fillStyle = '#1E1B18';
+                ctx.font = 'bold 24px "JetBrains Mono", monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('SPINDLE', cx, cy - 82);
+
+                ctx.font = '16px "JetBrains Mono", monospace';
+                ctx.fillText('STEREO 33⅓', cx, cy - 52);
+
+                ctx.fillStyle = '#F6F4F0';
+                ctx.font = 'bold 23px "Plus Jakarta Sans", sans-serif';
+                const cleanTitle = ((track && track.title) || 'UNTITLED').substring(0, 18).toUpperCase();
+                ctx.fillText(cleanTitle, cx, cy + 68);
+
+                ctx.font = '17px "Plus Jakarta Sans", sans-serif';
+                const cleanArtist = ((track && track.artist) || 'UNKNOWN ARTIST').substring(0, 22);
+                ctx.fillText(cleanArtist, cx, cy + 96);
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, 18, 0, Math.PI * 2);
+                ctx.fillStyle = '#1E1B18';
+                ctx.fill();
+
+                const texture = new THREE.CanvasTexture(canvas);
+                texture.anisotropy = 4;
+                return texture;
+            }
+
+            buildTurntable() {
+                this.turntableGroup = new THREE.Group();
+                this.scene.add(this.turntableGroup);
+
+                const walnutTex = this.createWalnutTexture();
+                const walnutMat = new THREE.MeshStandardMaterial({
+                    map: walnutTex,
+                    bumpMap: walnutTex,
+                    bumpScale: 0.008,
+                    roughness: 0.36,
+                    metalness: 0.06
+                });
+
+                const brushedTex = this.createBrushedMetalTexture();
+                const topPlateMat = new THREE.MeshStandardMaterial({
+                    map: brushedTex,
+                    bumpMap: brushedTex,
+                    bumpScale: 0.003,
+                    color: 0xDFDBD2,
+                    roughness: 0.28,
+                    metalness: 0.78
+                });
+
+                const chromeMat = new THREE.MeshStandardMaterial({
+                    color: 0xFFFFFF,
+                    roughness: 0.08,
+                    metalness: 0.96
+                });
+
+                const machinedAlumMat = new THREE.MeshStandardMaterial({
+                    color: 0xE2E0DC,
+                    roughness: 0.22,
+                    metalness: 0.88
+                });
+
+                const brassMat = new THREE.MeshStandardMaterial({
+                    color: 0xDFB848,
+                    roughness: 0.18,
+                    metalness: 0.92
+                });
+
+                const darkMat = new THREE.MeshStandardMaterial({
+                    color: 0x181614,
+                    roughness: 0.5,
+                    metalness: 0.25
+                });
+
+                const rubberMat = new THREE.MeshStandardMaterial({
+                    color: 0x121110,
+                    roughness: 0.85,
+                    metalness: 0.04
+                });
+
+                // 1. Invisible Shadow Floor
+                const shadowFloor = new THREE.Mesh(
+                    new THREE.PlaneGeometry(30, 30),
+                    new THREE.ShadowMaterial({ opacity: 0.18 })
+                );
+                shadowFloor.rotation.x = -Math.PI / 2;
+                shadowFloor.position.y = -0.46;
+                shadowFloor.receiveShadow = true;
+                this.scene.add(shadowFloor);
+
+                // 2. Walnut Cabinet Plinth with Mitered Surround & Recessed Top Deck
+                const plinthCore = new THREE.Mesh(new THREE.BoxGeometry(5.16, 0.56, 4.16), walnutMat);
+                plinthCore.castShadow = true;
+                plinthCore.receiveShadow = true;
+                this.turntableGroup.add(plinthCore);
+
+                const wallThickness = 0.18;
+                const wallHeight = 0.07;
+                const wallY = 0.28 + wallHeight / 2;
+
+                const frontBackGeo = new THREE.BoxGeometry(5.16, wallHeight, wallThickness);
+                const frontWall = new THREE.Mesh(frontBackGeo, walnutMat);
+                frontWall.position.set(0, wallY, 2.08 - wallThickness / 2);
+                frontWall.castShadow = true;
+                frontWall.receiveShadow = true;
+                this.turntableGroup.add(frontWall);
+
+                const backWall = new THREE.Mesh(frontBackGeo, walnutMat);
+                backWall.position.set(0, wallY, -2.08 + wallThickness / 2);
+                backWall.castShadow = true;
+                backWall.receiveShadow = true;
+                this.turntableGroup.add(backWall);
+
+                const leftRightGeo = new THREE.BoxGeometry(wallThickness, wallHeight, 4.16 - wallThickness * 2);
+                const leftWall = new THREE.Mesh(leftRightGeo, walnutMat);
+                leftWall.position.set(-2.58 + wallThickness / 2, wallY, 0);
+                leftWall.castShadow = true;
+                leftWall.receiveShadow = true;
+                this.turntableGroup.add(leftWall);
+
+                const rightWall = new THREE.Mesh(leftRightGeo, walnutMat);
+                rightWall.position.set(2.58 - wallThickness / 2, wallY, 0);
+                rightWall.castShadow = true;
+                rightWall.receiveShadow = true;
+                this.turntableGroup.add(rightWall);
+
+                const subSkirt = new THREE.Mesh(new THREE.BoxGeometry(4.85, 0.08, 3.85), darkMat);
+                subSkirt.position.y = -0.30;
+                this.turntableGroup.add(subSkirt);
+
+                const badgePlate = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.14, 0.03), darkMat);
+                badgePlate.position.set(0, 0.02, 2.085);
+                this.turntableGroup.add(badgePlate);
+
+                const badgeTrim = new THREE.Mesh(new THREE.BoxGeometry(0.99, 0.17, 0.02), brassMat);
+                badgeTrim.position.set(0, 0.02, 2.08);
+                this.turntableGroup.add(badgeTrim);
+
+                const deck = new THREE.Mesh(new THREE.BoxGeometry(4.82, 0.05, 3.82), topPlateMat);
+                deck.position.y = 0.295;
+                deck.receiveShadow = true;
+                this.turntableGroup.add(deck);
+
+                const boltCoords = [
+                    [-2.25, 0.322, -1.75],
+                    [2.25, 0.322, -1.75],
+                    [-2.25, 0.322, 1.75],
+                    [2.25, 0.322, 1.75]
+                ];
+                boltCoords.forEach(([bx, by, bz]) => {
+                    const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.015, 16), chromeMat);
+                    bolt.position.set(bx, by, bz);
+                    this.turntableGroup.add(bolt);
+                });
+
+                const adapterWell = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.02, 32), darkMat);
+                adapterWell.position.set(-2.02, 0.315, -1.42);
+                this.turntableGroup.add(adapterWell);
+
+                const rpmAdapter = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.045, 32), machinedAlumMat);
+                rpmAdapter.position.set(-2.02, 0.33, -1.42);
+                rpmAdapter.castShadow = true;
+                this.turntableGroup.add(rpmAdapter);
+
+                const adapterHole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.05, 20), darkMat);
+                adapterHole.position.set(-2.02, 0.335, -1.42);
+                this.turntableGroup.add(adapterHole);
+
+                const footPositions = [
+                    [-2.15, -0.36, -1.65],
+                    [2.15, -0.36, -1.65],
+                    [-2.15, -0.36, 1.65],
+                    [2.15, -0.36, 1.65]
+                ];
+                footPositions.forEach(([fx, fy, fz]) => {
+                    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.25, 0.18, 32), rubberMat);
+                    foot.position.set(fx, fy, fz);
+                    foot.castShadow = true;
+                    this.turntableGroup.add(foot);
+
+                    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.31, 0.045, 32), brassMat);
+                    collar.position.set(fx, fy + 0.05, fz);
+                    this.turntableGroup.add(collar);
+                });
+
+                // 3. Recessed Platter Well & Die-Cast Strobe Platter
+                const platterWell = new THREE.Mesh(new THREE.CylinderGeometry(1.78, 1.78, 0.02, 64), darkMat);
+                platterWell.position.set(-0.52, 0.315, 0);
+                this.turntableGroup.add(platterWell);
+
+                this.platterGroup = new THREE.Group();
+                this.platterGroup.position.set(-0.52, 0.355, 0);
+                this.turntableGroup.add(this.platterGroup);
+
+                const platterBase = new THREE.Mesh(new THREE.CylinderGeometry(1.68, 1.74, 0.11, 64), machinedAlumMat);
+                platterBase.castShadow = true;
+                platterBase.receiveShadow = true;
+                this.platterGroup.add(platterBase);
+
+                const platterTopRim = new THREE.Mesh(new THREE.CylinderGeometry(1.685, 1.68, 0.04, 64), chromeMat);
+                platterTopRim.position.y = 0.065;
+                this.platterGroup.add(platterTopRim);
+
+                const dotCount = 60;
+                for (let i = 0; i < dotCount; i++) {
+                    const angle = (i / dotCount) * Math.PI * 2;
+                    const cosA = Math.cos(angle);
+                    const sinA = Math.sin(angle);
+
+                    const upperTooth = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.032, 0.02), darkMat);
+                    upperTooth.position.set(cosA * 1.702, 0.022, sinA * 1.702);
+                    upperTooth.rotation.y = -angle;
+                    this.platterGroup.add(upperTooth);
+
+                    const lowerTooth = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.024, 0.02), darkMat);
+                    lowerTooth.position.set(cosA * 1.722, -0.022, sinA * 1.722);
+                    lowerTooth.rotation.y = -angle;
+                    this.platterGroup.add(lowerTooth);
+                }
+
+                const matMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.63, 1.63, 0.025, 64), rubberMat);
+                matMesh.position.y = 0.088;
+                matMesh.receiveShadow = true;
+                this.platterGroup.add(matMesh);
+
+                [0.65, 0.95, 1.25, 1.52].forEach(radius => {
+                    const gripRing = new THREE.Mesh(
+                        new THREE.TorusGeometry(radius, 0.006, 8, 64),
+                        darkMat
+                    );
+                    gripRing.rotation.x = Math.PI / 2;
+                    gripRing.position.y = 0.101;
+                    this.platterGroup.add(gripRing);
+                });
+
+                const spindleShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.042, 0.34, 24), chromeMat);
+                spindleShaft.position.y = 0.18;
+                spindleShaft.castShadow = true;
+                this.platterGroup.add(spindleShaft);
+
+                const spindleTip = new THREE.Mesh(new THREE.ConeGeometry(0.036, 0.05, 24), chromeMat);
+                spindleTip.position.y = 0.375;
+                this.platterGroup.add(spindleTip);
+
+                // 4. Vinyl Record Disc
+                this.recordGroup = new THREE.Group();
+                this.recordGroup.position.y = 0.105;
+                this.platterGroup.add(this.recordGroup);
+
+                const vinylTex = this.createVinylTexture(DEFAULT_SYNTH_TRACKS[0]);
+                this.vinylMat = new THREE.MeshStandardMaterial({
+                    map: vinylTex,
+                    bumpMap: vinylTex,
+                    bumpScale: 0.002,
+                    roughness: 0.32,
+                    metalness: 0.06,
+                    envMapIntensity: 0.35
+                });
+
+                const recordGeo = new THREE.CylinderGeometry(1.60, 1.60, 0.026, 64);
+                this.recordMesh = new THREE.Mesh(recordGeo, [
+                    darkMat,
+                    this.vinylMat,
+                    this.vinylMat
+                ]);
+                this.recordMesh.castShadow = true;
+                this.recordMesh.receiveShadow = true;
+                this.recordGroup.add(this.recordMesh);
+
+                const spindleBushing = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.032, 32), brassMat);
+                spindleBushing.position.y = 0.004;
+                this.recordGroup.add(spindleBushing);
+
+                // 5. Precision S-Shaped Tonearm & Multi-Axis Gimbal Assembly
+                const armBasePos = new THREE.Vector3(1.65, 0.32, -1.05);
+
+                const armBase = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.48, 0.08, 36), darkMat);
+                armBase.position.copy(armBasePos);
+                armBase.castShadow = true;
+                this.turntableGroup.add(armBase);
+
+                const armBaseRing = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.38, 0.06, 36), machinedAlumMat);
+                armBaseRing.position.set(armBasePos.x, armBasePos.y + 0.06, armBasePos.z);
+                this.turntableGroup.add(armBaseRing);
+
+                const armCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.26, 0.22, 32), chromeMat);
+                armCollar.position.set(armBasePos.x, armBasePos.y + 0.14, armBasePos.z);
+                this.turntableGroup.add(armCollar);
+
+                const antiSkateBase = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.10, 0.08, 24), darkMat);
+                antiSkateBase.position.set(armBasePos.x + 0.31, armBasePos.y + 0.06, armBasePos.z + 0.08);
+                this.turntableGroup.add(antiSkateBase);
+
+                const antiSkateKnob = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.06, 24), chromeMat);
+                antiSkateKnob.position.set(armBasePos.x + 0.31, armBasePos.y + 0.12, armBasePos.z + 0.08);
+                this.turntableGroup.add(antiSkateKnob);
+
+                const cueCylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.18, 16), chromeMat);
+                cueCylinder.position.set(armBasePos.x - 0.24, armBasePos.y + 0.14, armBasePos.z + 0.28);
+                this.turntableGroup.add(cueCylinder);
+
+                this.cueLever = new THREE.Group();
+                this.cueLever.position.set(armBasePos.x - 0.16, armBasePos.y + 0.18, armBasePos.z + 0.28);
+                this.turntableGroup.add(this.cueLever);
+
+                const cueRod = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.28, 12), chromeMat);
+                cueRod.rotation.x = Math.PI / 2;
+                cueRod.position.z = 0.14;
+                this.cueLever.add(cueRod);
+
+                const cueTip = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.08, 12), darkMat);
+                cueTip.rotation.x = Math.PI / 2;
+                cueTip.position.z = 0.26;
+                this.cueLever.add(cueTip);
+
+                this.tonearmYawGroup = new THREE.Group();
+                this.tonearmYawGroup.position.set(armBasePos.x, armBasePos.y + 0.28, armBasePos.z);
+                this.turntableGroup.add(this.tonearmYawGroup);
+
+                const gimbalPillarL = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.30, 0.09), machinedAlumMat);
+                gimbalPillarL.position.set(-0.16, 0.02, 0);
+                this.tonearmYawGroup.add(gimbalPillarL);
+
+                const gimbalPillarR = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.30, 0.09), machinedAlumMat);
+                gimbalPillarR.position.set(0.16, 0.02, 0);
+                this.tonearmYawGroup.add(gimbalPillarR);
+
+                const gimbalBridge = new THREE.Mesh(new THREE.BoxGeometry(0.365, 0.045, 0.09), machinedAlumMat);
+                gimbalBridge.position.set(0, 0.16, 0);
+                this.tonearmYawGroup.add(gimbalBridge);
+
+                const topPivotScrew = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.04, 16), brassMat);
+                topPivotScrew.position.set(0, 0.19, 0);
+                this.tonearmYawGroup.add(topPivotScrew);
+
+                const cueBar = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.025, 0.04), chromeMat);
+                cueBar.position.set(-0.08, -0.09, 0.34);
+                this.tonearmYawGroup.add(cueBar);
+
+                this.tonearmPitchGroup = new THREE.Group();
+                this.tonearmYawGroup.add(this.tonearmPitchGroup);
+
+                const innerGimbal = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.16, 24), brassMat);
+                innerGimbal.rotation.z = Math.PI / 2;
+                this.tonearmPitchGroup.add(innerGimbal);
+
+                const sArmCurve = new THREE.CatmullRomCurve3([
+                    new THREE.Vector3(0, 0, -0.10),
+                    new THREE.Vector3(0, 0, 0.18),
+                    new THREE.Vector3(0.12, 0, 0.68),
+                    new THREE.Vector3(0.13, 0, 1.22),
+                    new THREE.Vector3(0.04, 0, 1.72),
+                    new THREE.Vector3(0, 0, 2.00)
+                ]);
+                const sArmGeo = new THREE.TubeGeometry(sArmCurve, 48, 0.032, 20, false);
+                const sArmMesh = new THREE.Mesh(sArmGeo, chromeMat);
+                sArmMesh.castShadow = true;
+                this.tonearmPitchGroup.add(sArmMesh);
+
+                // Properly aligned cylindrical locking collar nut at the front of the S-Arm
+                const lockingCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.055, 20), chromeMat);
+                lockingCollar.rotation.x = Math.PI / 2;
+                lockingCollar.position.set(0, 0, 1.98);
+                this.tonearmPitchGroup.add(lockingCollar);
+
+                const rearStub = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.45, 20), machinedAlumMat);
+                rearStub.rotation.x = Math.PI / 2;
+                rearStub.position.z = -0.30;
+                this.tonearmPitchGroup.add(rearStub);
+
+                const counterweightBody = new THREE.Mesh(new THREE.CylinderGeometry(0.165, 0.165, 0.24, 32), darkMat);
+                counterweightBody.rotation.x = Math.PI / 2;
+                counterweightBody.position.z = -0.34;
+                counterweightBody.castShadow = true;
+                this.tonearmPitchGroup.add(counterweightBody);
+
+                const weightScaleRing = new THREE.Mesh(new THREE.CylinderGeometry(0.168, 0.168, 0.055, 32), chromeMat);
+                weightScaleRing.rotation.x = Math.PI / 2;
+                weightScaleRing.position.z = -0.23;
+                this.tonearmPitchGroup.add(weightScaleRing);
+
+                const weightBrassTrim = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.165, 0.04, 32), brassMat);
+                weightBrassTrim.rotation.x = Math.PI / 2;
+                weightBrassTrim.position.z = -0.47;
+                this.tonearmPitchGroup.add(weightBrassTrim);
+
+                // Clean, Flush Headshell & Cartridge Assembly
+                const headshellGroup = new THREE.Group();
+                headshellGroup.position.set(0, 0, 2.00);
+                headshellGroup.rotation.y = -0.38;
+                this.tonearmPitchGroup.add(headshellGroup);
+
+                const headshellNeck = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.032, 0.08), machinedAlumMat);
+                headshellNeck.position.set(0, 0.01, 0.03);
+                headshellGroup.add(headshellNeck);
+
+                const headshellTop = new THREE.Mesh(new THREE.BoxGeometry(0.175, 0.026, 0.32), darkMat);
+                headshellTop.position.set(0, 0.014, 0.17);
+                headshellTop.castShadow = true;
+                headshellGroup.add(headshellTop);
+
+                [-0.04, 0.04].forEach(sx => {
+                    const screw = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.012, 12), brassMat);
+                    screw.position.set(sx, 0.028, 0.21);
+                    headshellGroup.add(screw);
+                });
+
+                const cartridgeBody = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.145, 0.10, 0.24),
+                    new THREE.MeshStandardMaterial({ color: 0xC85A32, roughness: 0.25, metalness: 0.15 })
+                );
+                cartridgeBody.position.set(0, -0.045, 0.175);
+                headshellGroup.add(cartridgeBody);
+
+                const stylusGuard = new THREE.Mesh(new THREE.BoxGeometry(0.148, 0.04, 0.06), brassMat);
+                stylusGuard.position.set(0, -0.07, 0.27);
+                headshellGroup.add(stylusGuard);
+
+                // Subtle, flush curved finger-lift wire attached cleanly to the side of the headshell
+                const fingerLiftCurve = new THREE.CatmullRomCurve3([
+                    new THREE.Vector3(0.082, 0.012, 0.20),
+                    new THREE.Vector3(0.118, 0.018, 0.205),
+                    new THREE.Vector3(0.142, 0.042, 0.22)
+                ]);
+                const fingerLiftGeo = new THREE.TubeGeometry(fingerLiftCurve, 16, 0.0065, 10, false);
+                const fingerLift = new THREE.Mesh(fingerLiftGeo, chromeMat);
+                headshellGroup.add(fingerLift);
+
+                const needle = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.065, 12), chromeMat);
+                needle.rotation.x = Math.PI;
+                needle.position.set(0, -0.108, 0.24);
+                headshellGroup.add(needle);
+
+                // 6. Tonearm Rest Post & Locking Latch
+                const restPost = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.045, 0.25, 20), darkMat);
+                restPost.position.set(1.65, 0.42, 0.25);
+                this.turntableGroup.add(restPost);
+
+                const restCradle = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.045, 0.08), brassMat);
+                restCradle.position.set(1.65, 0.54, 0.25);
+                this.turntableGroup.add(restCradle);
+
+                // 7. Front & Side Deck Controls: Strobe Tower, Stylus Target Light, Pitch Fader & Switches
+                const strobeTower = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.18, 0.20), machinedAlumMat);
+                strobeTower.position.set(-1.95, 0.39, 1.48);
+                strobeTower.rotation.y = 0.62;
+                strobeTower.castShadow = true;
+                this.turntableGroup.add(strobeTower);
+
+                this.strobeLens = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.18, 0.08, 0.04),
+                    new THREE.MeshBasicMaterial({ color: 0xFF5500 })
+                );
+                this.strobeLens.position.set(-1.89, 0.40, 1.41);
+                this.strobeLens.rotation.y = 0.62;
+                this.turntableGroup.add(this.strobeLens);
+
+                const startStopBezel = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.03, 0.26), darkMat);
+                startStopBezel.position.set(-1.98, 0.325, 1.80);
+                this.turntableGroup.add(startStopBezel);
+
+                const startStopCap = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.20), machinedAlumMat);
+                startStopCap.position.set(-1.98, 0.34, 1.80);
+                this.turntableGroup.add(startStopCap);
+
+                const targetTower = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.14, 20), chromeMat);
+                targetTower.position.set(0.78, 0.37, 1.28);
+                this.turntableGroup.add(targetTower);
+
+                this.targetBulb = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.06, 0.05, 0.04),
+                    new THREE.MeshBasicMaterial({ color: 0x4A3A28 })
+                );
+                this.targetBulb.position.set(0.74, 0.40, 1.24);
+                this.targetBulb.rotation.y = -0.6;
+                this.turntableGroup.add(this.targetBulb);
+
+                const pitchPlate = new THREE.Mesh(
+                    new THREE.PlaneGeometry(0.34, 1.25),
+                    new THREE.MeshBasicMaterial({ map: this.createPitchScaleTexture() })
+                );
+                pitchPlate.rotation.x = -Math.PI / 2;
+                pitchPlate.position.set(2.14, 0.322, 0.25);
+                this.turntableGroup.add(pitchPlate);
+
+                const pitchSlot = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.015, 1.02), darkMat);
+                pitchSlot.position.set(2.17, 0.324, 0.25);
+                this.turntableGroup.add(pitchSlot);
+
+                this.pitchFaderKnob = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.09, 0.12), machinedAlumMat);
+                this.pitchFaderKnob.position.set(2.17, 0.365, 0.25);
+                this.pitchFaderKnob.castShadow = true;
+                this.turntableGroup.add(this.pitchFaderKnob);
+
+                const knobBase = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.19, 0.09, 32), brassMat);
+                knobBase.position.set(1.75, 0.355, 1.48);
+                this.turntableGroup.add(knobBase);
+
+                this.powerLever = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.09, 0.24), darkMat);
+                this.powerLever.position.set(1.75, 0.425, 1.48);
+                this.turntableGroup.add(this.powerLever);
+
+                const speedBtn = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.11, 0.07, 24), chromeMat);
+                speedBtn.position.set(1.25, 0.345, 1.48);
+                this.turntableGroup.add(speedBtn);
+
+                // 8. Hinged Smoked Acrylic Dust Cover Assembly (Rear Pivot)
+                [-1.8, 1.8].forEach(hx => {
+                    const hingeBase = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.16, 0.14), darkMat);
+                    hingeBase.position.set(hx, 0.36, -1.96);
+                    this.turntableGroup.add(hingeBase);
+
+                    const hingeClip = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.12, 0.06), chromeMat);
+                    hingeClip.position.set(hx, 0.42, -1.92);
+                    this.turntableGroup.add(hingeClip);
+                });
+
+                this.dustCoverGroup = new THREE.Group();
+                this.dustCoverGroup.position.set(0, 0.38, -1.96);
+                this.turntableGroup.add(this.dustCoverGroup);
+
+                const acrylicMat = new THREE.MeshPhysicalMaterial({
+                    color: 0xF5EFE6,
+                    transparent: true,
+                    opacity: 0.20,
+                    roughness: 0.08,
+                    metalness: 0.05,
+                    reflectivity: 0.9,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                });
+
+                const coverShell = new THREE.Mesh(new THREE.BoxGeometry(4.96, 0.72, 3.92), acrylicMat);
+                coverShell.position.set(0, 0.36, 1.96);
+                this.dustCoverGroup.add(coverShell);
+
+                const coverEdges = new THREE.LineSegments(
+                    new THREE.EdgesGeometry(new THREE.BoxGeometry(4.96, 0.72, 3.92)),
+                    new THREE.LineBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.30 })
+                );
+                coverEdges.position.set(0, 0.36, 1.96);
+                this.dustCoverGroup.add(coverEdges);
+
+                const coverLiftTab = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.04, 0.06), brassMat);
+                coverLiftTab.position.set(0, 0.05, 3.92);
+                this.dustCoverGroup.add(coverLiftTab);
+            }
+
+            toggleDustCover() {
+                this.dustCoverOpen = !this.dustCoverOpen;
+                return this.dustCoverOpen;
+            }
+
+            updateRecordLabel(track) {
+                if (!this.vinylMat || !track) return;
+                const newTex = this.createVinylTexture(track);
+                if (this.vinylMat.map) this.vinylMat.map.dispose();
+                this.vinylMat.map = newTex;
+                this.vinylMat.bumpMap = newTex;
+                this.vinylMat.needsUpdate = true;
+            }
+
+            triggerTrackChange(track, autoPlay = true) {
+                if (!track) return;
+                if (this.mechState === 'IDLE_STOPPED') {
+                    this.updateRecordLabel(track);
+                    this.recordHeight = 2.0;
+                    if (autoPlay) {
+                        this.mechState = 'DROPPING_RECORD';
+                    }
+                } else {
+                    this.pendingTrack = track;
+                    this.pendingAutoPlay = autoPlay;
+                    this.mechState = 'SWAPPING_OUT';
+                }
+            }
+
+            // Smooth Spherical Arc Camera Transition with Smootherstep Easing
+            setCameraView(preset) {
+                let endPos, endLook;
+                if (preset === 'iso') {
+                    endPos = new THREE.Vector3(5.9, 5.1, 6.7);
+                    endLook = new THREE.Vector3(0, 0.2, 0);
+                } else if (preset === 'top') {
+                    endPos = new THREE.Vector3(0.0, 8.6, 0.8);
+                    endLook = new THREE.Vector3(-0.2, 0, 0);
+                } else if (preset === 'side') {
+                    endPos = new THREE.Vector3(3.6, 1.8, 3.8);
+                    endLook = new THREE.Vector3(0.4, 0.35, 0.2);
+                } else {
+                    return;
+                }
+
+                const startLook = this.controls.target.clone();
+                const startOffset = this.camera.position.clone().sub(startLook);
+                const endOffset = endPos.clone().sub(endLook);
+
+                const startSpherical = new THREE.Spherical().setFromVector3(startOffset);
+                const endSpherical = new THREE.Spherical().setFromVector3(endOffset);
+
+                // Shortest angular path around Y axis (theta)
+                let deltaTheta = endSpherical.theta - startSpherical.theta;
+                while (deltaTheta > Math.PI) deltaTheta -= Math.PI * 2;
+                while (deltaTheta < -Math.PI) deltaTheta += Math.PI * 2;
+                endSpherical.theta = startSpherical.theta + deltaTheta;
+
+                this.camAnim = {
+                    startSpherical,
+                    endSpherical,
+                    startLook,
+                    endLook,
+                    elapsed: 0,
+                    duration: 1.65 // 1.65s cinematic orbital glide
+                };
+
+                // Sync the manual camera preset buttons in the top-right HUD
+                document.querySelectorAll('.cam-btn').forEach(btn => {
+                    if (btn.dataset.cam === preset) {
+                        btn.className = 'cam-btn px-2.5 py-1 rounded-xl font-mono text-[11px] bg-terracotta text-alabaster transition';
+                    } else {
+                        btn.className = 'cam-btn px-2.5 py-1 rounded-xl font-mono text-[11px] text-espresso hover:bg-oatmeal transition';
+                    }
+                });
+            }
+
+            bindResize() {
+                window.addEventListener('resize', () => {
+                    if (!this.container) return;
+                    const w = this.container.clientWidth;
+                    const h = this.container.clientHeight;
+                    this.camera.aspect = w / h;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(w, h);
+                });
+            }
+
+            update() {
+                const dt = Math.min(this.clock.getDelta(), 0.1);
+                const elapsed = this.clock.getElapsedTime();
+
+                const progress = AppState.duration > 0
+                    ? Math.min(1, Math.max(0, AppState.currentTime / AppState.duration))
+                    : 0;
+
+                const grooveYaw = 0.44 + progress * 0.34;
+
+                switch (this.mechState) {
+                    case 'IDLE_STOPPED':
+                        this.targetRPM = 0;
+                        this.armPitch += (0.0 - this.armPitch) * 8 * dt;
+                        this.armYaw += (0.0 - this.armYaw) * 6 * dt;
+                        this.recordHeight += (0.0 - this.recordHeight) * 7 * dt;
+                        this.powerSwitchAngle += (-0.35 - this.powerSwitchAngle) * 8 * dt;
+                        break;
+
+                    case 'SWAPPING_OUT':
+                        this.targetRPM = 0;
+                        this.armPitch += (0.15 - this.armPitch) * 10 * dt;
+                        this.armYaw += (0.0 - this.armYaw) * 7 * dt;
+                        if (this.armYaw < 0.12) {
+                            this.recordHeight += (2.2 - this.recordHeight) * 8 * dt;
+                            if (this.recordHeight > 1.8) {
+                                if (this.pendingTrack) {
+                                    this.updateRecordLabel(this.pendingTrack);
+                                }
+                                this.mechState = this.pendingAutoPlay ? 'DROPPING_RECORD' : 'IDLE_STOPPED';
+                            }
+                        }
+                        break;
+
+                    case 'DROPPING_RECORD':
+                        this.targetRPM = 0;
+                        this.recordHeight += (0.0 - this.recordHeight) * 8 * dt;
+                        this.armPitch += (0.15 - this.armPitch) * 8 * dt;
+                        if (this.recordHeight < 0.03) {
+                            this.recordHeight = 0;
+                            this.mechState = 'CUIING_ARM';
+                        }
+                        break;
+
+                    case 'CUIING_ARM':
+                        this.targetRPM = AppState.rpmMode;
+                        this.powerSwitchAngle += (0.35 - this.powerSwitchAngle) * 8 * dt;
+                        this.armPitch += (0.15 - this.armPitch) * 9 * dt;
+                        this.armYaw += (grooveYaw - this.armYaw) * 6 * dt;
+
+                        if (Math.abs(this.armYaw - grooveYaw) < 0.015) {
+                            this.armPitch += (0.02 - this.armPitch) * 6 * dt;
+                            if (this.armPitch < 0.035) {
+                                this.mechState = 'PLAYING';
+                            }
+                        }
+                        break;
+
+                    case 'PLAYING':
+                        this.targetRPM = AppState.rpmMode;
+                        this.powerSwitchAngle += (0.35 - this.powerSwitchAngle) * 8 * dt;
+                        this.recordHeight += (0.0 - this.recordHeight) * 10 * dt;
+                        const microFlutter = Math.sin(elapsed * 28) * 0.0012;
+                        this.armPitch += ((0.018 + microFlutter) - this.armPitch) * 10 * dt;
+                        this.armYaw += (grooveYaw - this.armYaw) * 5 * dt;
+                        break;
+
+                    case 'PAUSED':
+                        this.targetRPM = 0;
+                        this.armPitch += (0.11 - this.armPitch) * 8 * dt;
+                        this.armYaw += (grooveYaw - this.armYaw) * 5 * dt;
+                        break;
+
+                    case 'RETURNING_ARM':
+                        this.targetRPM = 0;
+                        this.powerSwitchAngle += (-0.35 - this.powerSwitchAngle) * 8 * dt;
+                        this.armPitch += (0.15 - this.armPitch) * 10 * dt;
+                        if (this.armPitch > 0.10) {
+                            this.armYaw += (0.0 - this.armYaw) * 6 * dt;
+                            if (this.armYaw < 0.02) {
+                                this.mechState = 'IDLE_STOPPED';
+                            }
+                        }
+                        break;
+                }
+
+                this.currentRPM += (this.targetRPM - this.currentRPM) * 3.5 * dt;
+                if (this.currentRPM < 0.05 && this.targetRPM === 0) this.currentRPM = 0;
+
+                const radPerSec = (this.currentRPM / 60) * Math.PI * 2;
+                this.platterGroup.rotation.y -= radPerSec * dt;
+                this.recordMesh.rotation.z = Math.sin(this.platterGroup.rotation.y) * 0.004;
+
+                this.recordGroup.position.y = 0.105 + this.recordHeight;
+                this.tonearmYawGroup.rotation.y = -this.armYaw;
+                this.tonearmPitchGroup.rotation.x = -this.armPitch;
+                this.powerLever.rotation.y = this.powerSwitchAngle;
+
+                if (this.cueLever) {
+                    this.cueLever.rotation.x = -this.armPitch * 2.4;
+                }
+
+                const forceOpen = this.recordHeight > 0.15;
+                const targetCoverAngle = (this.dustCoverOpen || forceOpen) ? 1.02 : 0.0;
+                this.dustCoverAngle += (targetCoverAngle - this.dustCoverAngle) * 5 * dt;
+                if (this.dustCoverGroup) {
+                    this.dustCoverGroup.rotation.x = -this.dustCoverAngle;
+                }
+
+                const strobeActive = this.currentRPM > 1.0 || this.mechState !== 'IDLE_STOPPED';
+                this.strobeLight.intensity = strobeActive ? 0.9 + Math.sin(elapsed * 60) * 0.1 : 0.15;
+                this.strobeLens.material.color.setHex(strobeActive ? 0xFF5500 : 0x4A2511);
+
+                this.targetLight.intensity = strobeActive ? 0.65 : 0.0;
+                this.targetBulb.material.color.setHex(strobeActive ? 0xFFE0A3 : 0x4A3A28);
+
+                // Execute smooth spherical camera transition with quintic smootherstep easing
+                if (this.camAnim) {
+                    this.camAnim.elapsed += dt;
+                    const rawT = Math.min(1, this.camAnim.elapsed / this.camAnim.duration);
+                    // Quintic smootherstep: zero 1st and 2nd derivatives at start & end
+                    const ease = rawT * rawT * rawT * (rawT * (rawT * 6 - 15) + 10);
+
+                    this.controls.target.lerpVectors(this.camAnim.startLook, this.camAnim.endLook, ease);
+
+                    const currentSpherical = new THREE.Spherical(
+                        THREE.MathUtils.lerp(this.camAnim.startSpherical.radius, this.camAnim.endSpherical.radius, ease),
+                        THREE.MathUtils.lerp(this.camAnim.startSpherical.phi, this.camAnim.endSpherical.phi, ease),
+                        THREE.MathUtils.lerp(this.camAnim.startSpherical.theta, this.camAnim.endSpherical.theta, ease)
+                    );
+
+                    const offsetVec = new THREE.Vector3().setFromSpherical(currentSpherical);
+                    this.camera.position.copy(this.controls.target).add(offsetVec);
+                    this.camera.lookAt(this.controls.target);
+
+                    if (rawT >= 1) {
+                        this.camAnim = null;
+                        this.controls.update();
+                    }
+                } else {
+                    this.controls.update();
+                }
+
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+
+        let turntable3D = null;
+
+        /***********************************************************************
+         * 6. UI CONTROLLER: TOP PLAYLIST HERO, MIDDLE LIST & BOTTOM PLAYER
+         ***********************************************************************/
+        function formatTime(sec) {
+            if (!sec || isNaN(sec)) return '00:00';
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60);
+            return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        function formatTotalDuration(trackIds) {
+            let total = 0;
+            trackIds.forEach(id => {
+                const t = AppState.tracksById[id];
+                if (t && t.duration) total += t.duration;
+            });
+            return formatTime(total);
+        }
+
+        function escapeHtml(str) {
+            return String(str || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        // Updates the bottom Now Playing bar (hidden until a song/playlist is started)
+        function updatePlayerUI() {
+            const nowPlayingSection = document.getElementById('now-playing-section');
+            const stateBadge = document.getElementById('state-badge');
+            const statusLed = document.getElementById('status-led');
+
+            const track = getCurrentTrack();
+            if (!AppState.hasActiveSession || !track) {
+                nowPlayingSection.classList.add('hidden');
+                nowPlayingSection.classList.remove('flex');
+                stateBadge.textContent = 'Stopped';
+                stateBadge.className = 'font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-oatmeal text-muted border border-stone uppercase tracking-wider';
+                statusLed.className = 'w-2.5 h-2.5 rounded-full bg-stone shadow-sm';
+                return;
+            }
+
+            nowPlayingSection.classList.remove('hidden');
+            nowPlayingSection.classList.add('flex');
+
+            const playingPl = getPlayingPlaylist();
+            document.getElementById('NowPlaying-playlist-name').textContent = playingPl ? playingPl.name : 'Playlist';
+            document.getElementById('current-title').textContent = track.title;
+            document.getElementById('current-artist').textContent = track.artist;
+
+            const coverDisc = document.getElementById('cover-disc');
+            coverDisc.style.background = `radial-gradient(circle, ${track.labelColor} 0%, ${track.labelColor} 28%, #141413 30%, #242424 46%, #111 48%, #292929 65%, #111 70%, #1c1c1c 100%)`;
+
+            if (AppState.playbackState === 'PLAYING') {
+                coverDisc.classList.add('playing');
+            } else {
+                coverDisc.classList.remove('playing');
+            }
+
+            const iconPlay = document.getElementById('icon-play');
+            const iconPause = document.getElementById('icon-pause');
+
+            if (AppState.playbackState === 'PLAYING') {
+                iconPlay.classList.add('hidden');
+                iconPause.classList.remove('hidden');
+                stateBadge.textContent = 'Playing';
+                stateBadge.className = 'font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-terracotta/15 text-terracotta border border-terracotta/30 uppercase tracking-wider';
+                statusLed.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm animate-pulse';
+            } else if (AppState.playbackState === 'PAUSED') {
+                iconPlay.classList.remove('hidden');
+                iconPause.classList.add('hidden');
+                stateBadge.textContent = 'Paused';
+                stateBadge.className = 'font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30 uppercase tracking-wider';
+                statusLed.className = 'w-2.5 h-2.5 rounded-full bg-amber-500 shadow-sm';
+            } else {
+                iconPlay.classList.remove('hidden');
+                iconPause.classList.add('hidden');
+                stateBadge.textContent = 'Stopped';
+                stateBadge.className = 'font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-oatmeal text-muted border border-stone uppercase tracking-wider';
+                statusLed.className = 'w-2.5 h-2.5 rounded-full bg-terracotta shadow-sm';
+            }
+
+            const pct = AppState.duration > 0 ? (AppState.currentTime / AppState.duration) * 100 : 0;
+            if (!AppState.isSeeking) {
+                document.getElementById('seek-slider').value = Math.round(pct * 10);
+            }
+            document.getElementById('seek-fill').style.width = `${Math.min(100, pct)}%`;
+            document.getElementById('time-current').textContent = formatTime(AppState.currentTime);
+            document.getElementById('time-total').textContent = formatTime(AppState.duration);
+
+            const btnShuffle = document.getElementById('btn-shuffle');
+            btnShuffle.className = `p-1.5 rounded-xl transition active:scale-95 ${
+                AppState.shuffleEnabled ? 'text-terracotta bg-oatmeal' : 'text-muted hover:text-espresso hover:bg-oatmeal'
+            }`;
+
+            const btnRepeat = document.getElementById('btn-repeat');
+            const repeatOneBadge = document.getElementById('repeat-one-badge');
+            btnRepeat.className = `p-1.5 rounded-xl transition active:scale-95 relative ${
+                AppState.repeatMode !== 'OFF' ? 'text-terracotta bg-oatmeal' : 'text-muted hover:text-espresso hover:bg-oatmeal'
+            }`;
+            if (AppState.repeatMode === 'ONE') {
+                repeatOneBadge.classList.remove('hidden');
+            } else {
+                repeatOneBadge.classList.add('hidden');
+            }
+        }
+
+        // Renders the Sidebar: either Playlists Overview OR Opened Playlist (Top Hero + Songs List)
+        function renderSidebarView() {
+            const heroSection = document.getElementById('opened-playlist-hero');
+            const overviewHeader = document.getElementById('playlists-overview-header');
+
+            if (AppState.uiView === 'PLAYLISTS') {
+                heroSection.classList.add('hidden');
+                heroSection.classList.remove('flex');
+                overviewHeader.classList.remove('hidden');
+                document.getElementById('playlist-count').textContent = AppState.playlists.length;
+                renderPlaylistsOverviewList();
+            } else {
+                const pl = getViewedPlaylist();
+                if (!pl) {
+                    AppState.uiView = 'PLAYLISTS';
+                    renderSidebarView();
+                    return;
+                }
+                overviewHeader.classList.add('hidden');
+                heroSection.classList.remove('hidden');
+                heroSection.classList.add('flex');
+
+                document.getElementById('hero-playlist-title').textContent = pl.name;
+                document.getElementById('hero-playlist-meta').textContent = `${pl.trackIds.length} ${pl.trackIds.length === 1 ? 'song' : 'songs'} • ${formatTotalDuration(pl.trackIds)}`;
+
+                const heroArt = document.getElementById('hero-playlist-artwork');
+                if (pl.artwork) {
+                    heroArt.innerHTML = `<img src="${pl.artwork}" class="w-full h-full object-cover" alt="">`;
+                } else {
+                    heroArt.innerHTML = `
+                        <div class="w-20 h-20 sm:w-22 sm:h-22 rounded-full border-4 border-neutral-800 flex items-center justify-center" style="background: radial-gradient(circle, ${pl.color || '#C85A32'} 0%, ${pl.color || '#C85A32'} 28%, #141413 30%, #222 45%, #111 47%, #292929 65%, #111 70%, #1c1c1c 100%);">
+                            <div class="w-2.5 h-2.5 rounded-full bg-alabaster"></div>
+                        </div>
+                        <div class="absolute inset-0 bg-gradient-to-tr from-black/30 via-transparent to-white/10 pointer-events-none"></div>
+                    `;
+                }
+
+                const reorderBtn = document.getElementById('btn-toggle-reorder');
+                const reorderLabel = document.getElementById('reorder-btn-label');
+                if (AppState.isReorderMode) {
+                    reorderBtn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-terracotta bg-terracotta text-alabaster text-xs font-medium transition active:scale-95';
+                    reorderLabel.textContent = 'Done';
+                } else {
+                    reorderBtn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone bg-alabaster hover:bg-oatmeal text-espresso text-xs font-medium transition active:scale-95';
+                    reorderLabel.textContent = 'Reorder';
+                }
+
+                renderOpenedPlaylistTracks(pl);
+            }
+        }
+
+        function renderPlaylistsOverviewList() {
+            const container = document.getElementById('playlist-container');
+            container.innerHTML = '';
+
+            AppState.playlists.forEach((pl) => {
+                const isSelected = AppState.hasActiveSession && pl.id === AppState.playingPlaylistId;
+                const isPlaying = isSelected && AppState.playbackState === 'PLAYING';
+
+                const row = document.createElement('div');
+                row.className = `group flex items-center justify-between px-3.5 py-2.5 rounded-2xl cursor-pointer transition-all border ${
+                    isSelected
+                        ? 'bg-alabaster border-stone shadow-sm'
+                        : 'bg-transparent border-transparent hover:bg-alabaster/60 hover:border-stone/40'
+                }`;
+
+                const artworkHtml = pl.artwork
+                    ? `<div class="w-10 h-10 rounded-xl overflow-hidden shrink-0 relative border border-stone">
+                        <img src="${pl.artwork}" class="w-full h-full object-cover" alt="">
+                       </div>`
+                    : `<div class="w-10 h-10 rounded-xl bg-espresso flex items-center justify-center shrink-0 relative border border-stone">
+                        <div class="w-7 h-7 rounded-full flex items-center justify-center" style="background: radial-gradient(circle, ${pl.color || '#C85A32'} 0%, ${pl.color || '#C85A32'} 35%, #1E1B18 38%, #1E1B18 100%);">
+                            ${
+                                isPlaying
+                                    ? `<div class="flex items-end gap-0.5 h-3">
+                                        <span class="w-0.5 bg-alabaster eq-bar-1"></span>
+                                        <span class="w-0.5 bg-alabaster eq-bar-2"></span>
+                                        <span class="w-0.5 bg-alabaster eq-bar-3"></span>
+                                       </div>`
+                                    : `<div class="w-1.5 h-1.5 rounded-full bg-alabaster"></div>`
+                            }
+                        </div>
+                       </div>`;
+
+                row.innerHTML = `
+                    <div class="flex items-center gap-3.5 min-w-0 flex-1">
+                        ${artworkHtml}
+                        <div class="flex flex-col min-w-0 flex-1">
+                            <span class="text-sm font-medium ${isSelected ? 'text-terracotta font-semibold' : 'text-espresso'} truncate">
+                                ${escapeHtml(pl.name)}
+                            </span>
+                            <span class="text-xs text-muted truncate">${pl.trackIds.length} ${pl.trackIds.length === 1 ? 'song' : 'songs'}</span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2 shrink-0 ml-2">
+                        <span class="font-mono text-xs text-muted">${formatTotalDuration(pl.trackIds)}</span>
+                        <button class="btn-pl-menu p-1.5 rounded-xl text-muted hover:text-espresso hover:bg-oatmeal transition" title="Playlist Options">
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+                            </svg>
+                        </button>
+                    </div>
+                `;
+
+                row.addEventListener('click', (e) => {
+                    if (e.target.closest('.btn-pl-menu')) return;
+                    openPlaylist(pl.id);
+                });
+
+                row.querySelector('.btn-pl-menu').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openPlaylistContextMenu(e.currentTarget, pl);
+                });
+
+                container.appendChild(row);
+            });
+        }
+
+        function openPlaylist(playlistId) {
+            AppState.viewedPlaylistId = playlistId;
+            AppState.uiView = 'PLAYLIST_DETAIL';
+            AppState.isReorderMode = false;
+            renderSidebarView();
+
+            if (turntable3D) {
+                turntable3D.setCameraView(AppState.hasActiveSession ? 'top' : 'side');
+            }
+        }
+
+        function renderOpenedPlaylistTracks(pl) {
+            const container = document.getElementById('playlist-container');
+            container.innerHTML = '';
+
+            if (pl.trackIds.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-8 px-4">
+                        <p class="text-sm font-medium text-espresso">No songs in this playlist</p>
+                        <p class="text-xs text-muted mt-1">Click "Add Songs" above or drag audio files here.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            pl.trackIds.forEach((trackId, idx) => {
+                const track = AppState.tracksById[trackId];
+                if (!track) return;
+
+                const isSelected = AppState.hasActiveSession && (pl.id === AppState.playingPlaylistId && idx === AppState.currentIndex);
+                const isPlaying = isSelected && AppState.playbackState === 'PLAYING';
+
+                const row = document.createElement('div');
+                row.dataset.index = idx;
+                row.draggable = AppState.isReorderMode;
+                row.className = `group flex items-center justify-between px-3.5 py-2.5 rounded-2xl cursor-pointer transition-all border ${
+                    AppState.isReorderMode
+                        ? 'bg-alabaster/90 border-stone border-dashed cursor-move hover:border-terracotta'
+                        : isSelected
+                            ? 'bg-alabaster border-stone shadow-sm'
+                            : 'bg-transparent border-transparent hover:bg-alabaster/60 hover:border-stone/40'
+                }`;
+
+                row.innerHTML = `
+                    <div class="flex items-center gap-3.5 min-w-0 flex-1">
+                        ${
+                            AppState.isReorderMode
+                                ? `<div class="text-muted hover:text-espresso cursor-grab active:cursor-grabbing" title="Drag to reorder">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                        <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                                        <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                                        <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+                                    </svg>
+                                   </div>`
+                                : ''
+                        }
+
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 relative" style="background: radial-gradient(circle, ${track.labelColor} 0%, ${track.labelColor} 35%, #1E1B18 38%, #1E1B18 100%);">
+                            ${
+                                isPlaying
+                                    ? `<div class="flex items-end gap-0.5 h-3.5">
+                                        <span class="w-0.5 bg-alabaster eq-bar-1"></span>
+                                        <span class="w-0.5 bg-alabaster eq-bar-2"></span>
+                                        <span class="w-0.5 bg-alabaster eq-bar-3"></span>
+                                       </div>`
+                                    : `<div class="w-1.5 h-1.5 rounded-full bg-alabaster"></div>`
+                            }
+                        </div>
+
+                        <div class="flex flex-col min-w-0 flex-1">
+                            <span class="text-sm font-medium ${isSelected ? 'text-terracotta font-semibold' : 'text-espresso'} truncate">
+                                ${escapeHtml(track.title)}
+                            </span>
+                            <span class="text-xs text-muted truncate">${escapeHtml(track.artist)}</span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2 shrink-0 ml-2">
+                        ${
+                            AppState.isReorderMode
+                                ? `
+                                <button class="btn-move-up p-1 rounded-lg bg-oatmeal hover:bg-stone text-espresso disabled:opacity-30 transition" ${idx === 0 ? 'disabled' : ''} title="Move Up">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/>
+                                    </svg>
+                                </button>
+                                <button class="btn-move-down p-1 rounded-lg bg-oatmeal hover:bg-stone text-espresso disabled:opacity-30 transition" ${idx === pl.trackIds.length - 1 ? 'disabled' : ''} title="Move Down">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </button>
+                                `
+                                : `
+                                <span class="font-mono text-xs text-muted">${formatTime(track.duration)}</span>
+                                <button class="btn-song-menu p-1.5 rounded-xl text-muted hover:text-espresso hover:bg-oatmeal transition" title="Song Options">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                        <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+                                    </svg>
+                                </button>
+                                `
+                        }
+                    </div>
+                `;
+
+                if (AppState.isReorderMode) {
+                    const upBtn = row.querySelector('.btn-move-up');
+                    const downBtn = row.querySelector('.btn-move-down');
+                    if (upBtn) {
+                        upBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            moveTrackInPlaylist(pl.id, idx, idx - 1);
+                        });
+                    }
+                    if (downBtn) {
+                        downBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            moveTrackInPlaylist(pl.id, idx, idx + 1);
+                        });
+                    }
+
+                    row.addEventListener('dragstart', (e) => {
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', String(idx));
+                        row.classList.add('opacity-40');
+                    });
+
+                    row.addEventListener('dragend', () => {
+                        row.classList.remove('opacity-40');
+                        container.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(el => {
+                            el.classList.remove('drag-over-top', 'drag-over-bottom');
+                        });
+                    });
+
+                    row.addEventListener('dragover', (e) => {
+                        e.preventDefault();
+                        const rect = row.getBoundingClientRect();
+                        const midY = rect.top + rect.height / 2;
+                        row.classList.remove('drag-over-top', 'drag-over-bottom');
+                        if (e.clientY < midY) {
+                            row.classList.add('drag-over-top');
+                        } else {
+                            row.classList.add('drag-over-bottom');
+                        }
+                    });
+
+                    row.addEventListener('dragleave', () => {
+                        row.classList.remove('drag-over-top', 'drag-over-bottom');
+                    });
+
+                    row.addEventListener('drop', (e) => {
+                        e.preventDefault();
+                        row.classList.remove('drag-over-top', 'drag-over-bottom');
+                        const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+                        if (isNaN(fromIdx) || fromIdx === idx) return;
+
+                        const rect = row.getBoundingClientRect();
+                        const dropAfter = e.clientY >= rect.top + rect.height / 2;
+                        let toIdx = dropAfter ? idx + 1 : idx;
+                        if (fromIdx < toIdx) toIdx--;
+                        moveTrackInPlaylist(pl.id, fromIdx, toIdx);
+                    });
+                } else {
+                    row.addEventListener('click', (e) => {
+                        if (e.target.closest('.btn-song-menu')) return;
+                        AppState.playingPlaylistId = pl.id;
+                        selectAndPlayTrack(idx);
+                    });
+
+                    row.querySelector('.btn-song-menu').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        openSongContextMenu(e.currentTarget, pl, track, idx);
+                    });
+                }
+
+                container.appendChild(row);
+            });
+        }
+
+        function moveTrackInPlaylist(playlistId, fromIdx, toIdx) {
+            const pl = AppState.playlists.find(p => p.id === playlistId);
+            if (!pl || toIdx < 0 || toIdx >= pl.trackIds.length || fromIdx === toIdx) return;
+
+            const isPlayingThisPl = (AppState.playingPlaylistId === playlistId);
+            const activeIdx = AppState.currentIndex;
+
+            const [movedId] = pl.trackIds.splice(fromIdx, 1);
+            pl.trackIds.splice(toIdx, 0, movedId);
+
+            if (isPlayingThisPl) {
+                if (activeIdx === fromIdx) {
+                    AppState.currentIndex = toIdx;
+                } else if (fromIdx < activeIdx && toIdx >= activeIdx) {
+                    AppState.currentIndex--;
+                } else if (fromIdx > activeIdx && toIdx <= activeIdx) {
+                    AppState.currentIndex++;
+                }
+            }
+
+            persistState();
+            renderSidebarView();
+        }
+
+        /***********************************************************************
+         * 7. 3-DOT CONTEXT MENUS & MODALS
+         ***********************************************************************/
+        const contextMenuEl = document.getElementById('context-menu');
+
+        function closeContextMenu() {
+            contextMenuEl.classList.add('hidden');
+            contextMenuEl.innerHTML = '';
+        }
+
+        function positionContextMenu(triggerBtn) {
+            const rect = triggerBtn.getBoundingClientRect();
+            contextMenuEl.classList.remove('hidden');
+            const menuWidth = 195;
+            const menuHeight = contextMenuEl.offsetHeight || 150;
+
+            let left = rect.right - menuWidth;
+            let top = rect.bottom + 6;
+            if (left < 12) left = 12;
+            if (top + menuHeight > window.innerHeight - 12) {
+                top = rect.top - menuHeight - 6;
+            }
+            contextMenuEl.style.left = `${left}px`;
+            contextMenuEl.style.top = `${top}px`;
+        }
+
+        function openPlaylistContextMenu(triggerBtn, playlist) {
+            contextMenuEl.innerHTML = `
+                <button data-action="rename" class="w-full text-left px-3.5 py-2 hover:bg-oatmeal flex items-center gap-2.5 transition">
+                    <span>Rename</span>
+                </button>
+                <button data-action="artwork" class="w-full text-left px-3.5 py-2 hover:bg-oatmeal flex items-center gap-2.5 transition">
+                    <span>Change Artwork</span>
+                </button>
+                <div class="my-1 border-t border-stone/40"></div>
+                <button data-action="remove" class="w-full text-left px-3.5 py-2 hover:bg-red-500/10 text-red-600 flex items-center gap-2.5 transition">
+                    <span>Remove</span>
+                </button>
+            `;
+            positionContextMenu(triggerBtn);
+
+            contextMenuEl.querySelector('[data-action="rename"]').onclick = () => {
+                closeContextMenu();
+                showRenamePlaylistModal(playlist);
+            };
+            contextMenuEl.querySelector('[data-action="artwork"]').onclick = () => {
+                closeContextMenu();
+                showChangePlaylistArtworkModal(playlist);
+            };
+            contextMenuEl.querySelector('[data-action="remove"]').onclick = () => {
+                closeContextMenu();
+                removePlaylist(playlist.id);
+            };
+        }
+
+        function openSongContextMenu(triggerBtn, playlist, track, index) {
+            contextMenuEl.innerHTML = `
+                <button data-action="edit" class="w-full text-left px-3.5 py-2 hover:bg-oatmeal flex items-center gap-2.5 transition">
+                    <span>Edit Song Info</span>
+                </button>
+                <button data-action="copy-to" class="w-full text-left px-3.5 py-2 hover:bg-oatmeal flex items-center gap-2.5 transition">
+                    <span>Add to Another Playlist</span>
+                </button>
+                <button data-action="reorder" class="w-full text-left px-3.5 py-2 hover:bg-oatmeal flex items-center gap-2.5 transition">
+                    <span>Reorder Playlist</span>
+                </button>
+                <div class="my-1 border-t border-stone/40"></div>
+                <button data-action="remove-song" class="w-full text-left px-3.5 py-2 hover:bg-red-500/10 text-red-600 flex items-center gap-2.5 transition">
+                    <span>Remove from Playlist</span>
+                </button>
+            `;
+            positionContextMenu(triggerBtn);
+
+            contextMenuEl.querySelector('[data-action="edit"]').onclick = () => {
+                closeContextMenu();
+                showEditTrackModal(track);
+            };
+            contextMenuEl.querySelector('[data-action="copy-to"]').onclick = () => {
+                closeContextMenu();
+                showCopyTrackToPlaylistModal(track);
+            };
+            contextMenuEl.querySelector('[data-action="reorder"]').onclick = () => {
+                closeContextMenu();
+                AppState.isReorderMode = true;
+                renderSidebarView();
+            };
+            contextMenuEl.querySelector('[data-action="remove-song"]').onclick = () => {
+                closeContextMenu();
+                removeSongFromPlaylist(playlist.id, index);
+            };
+        }
+
+        function removePlaylist(playlistId) {
+            if (AppState.playlists.length <= 1) {
+                alert('You must keep at least one playlist.');
+                return;
+            }
+            const idx = AppState.playlists.findIndex(p => p.id === playlistId);
+            if (idx === -1) return;
+
+            const wasPlaying = (AppState.playingPlaylistId === playlistId);
+            AppState.playlists.splice(idx, 1);
+
+            if (wasPlaying) {
+                stopPlayback();
+                AppState.playingPlaylistId = null;
+                AppState.hasActiveSession = false;
+                AppState.currentIndex = 0;
+            }
+            if (AppState.viewedPlaylistId === playlistId) {
+                AppState.viewedPlaylistId = null;
+                AppState.uiView = 'PLAYLISTS';
+            }
+
+            persistState();
+            renderSidebarView();
+            updatePlayerUI();
+        }
+
+        function removeSongFromPlaylist(playlistId, songIndex) {
+            const pl = AppState.playlists.find(p => p.id === playlistId);
+            if (!pl) return;
+
+            const isPlayingThisPl = (AppState.playingPlaylistId === playlistId);
+            pl.trackIds.splice(songIndex, 1);
+
+            if (isPlayingThisPl) {
+                if (pl.trackIds.length === 0) {
+                    stopPlayback();
+                    AppState.hasActiveSession = false;
+                    AppState.currentIndex = 0;
+                } else if (songIndex === AppState.currentIndex) {
+                    AppState.currentIndex = Math.min(songIndex, pl.trackIds.length - 1);
+                    if (AppState.playbackState === 'PLAYING') {
+                        selectAndPlayTrack(AppState.currentIndex);
+                    }
+                } else if (songIndex < AppState.currentIndex) {
+                    AppState.currentIndex--;
+                }
+            }
+
+            persistState();
+            renderSidebarView();
+            updatePlayerUI();
+        }
+
+        // Modals
+        const modalBackdrop = document.getElementById('modal-backdrop');
+        const modalTitle = document.getElementById('modal-title');
+        const modalBody = document.getElementById('modal-body');
+
+        function openModal(title, htmlContent) {
+            modalTitle.textContent = title;
+            modalBody.innerHTML = htmlContent;
+            modalBackdrop.classList.remove('hidden');
+            modalBackdrop.classList.add('flex');
+        }
+
+        function closeModal() {
+            modalBackdrop.classList.add('hidden');
+            modalBackdrop.classList.remove('flex');
+            modalBody.innerHTML = '';
+        }
+
+        document.getElementById('modal-close').addEventListener('click', closeModal);
+        modalBackdrop.addEventListener('click', (e) => {
+            if (e.target === modalBackdrop) closeModal();
+        });
+
+        function showCreatePlaylistModal() {
+            let selectedColor = VINYL_COLORS[0].label;
+            let customArtwork = null;
+
+            openModal('Create Playlist', `
+                <div class="space-y-4">
+                    <div>
+                        <label class="block font-mono text-[11px] uppercase text-muted mb-1">Playlist Name</label>
+                        <input id="input-pl-name" type="text" placeholder="e.g. Late Night Sessions" class="w-full px-3.5 py-2 rounded-xl bg-oatmeal/60 border border-stone text-sm text-espresso focus:outline-none focus:border-terracotta">
+                    </div>
+                    <div>
+                        <label class="block font-mono text-[11px] uppercase text-muted mb-2">Artwork or Color</label>
+                        <div class="flex items-center gap-3">
+                            <div id="create-art-preview" class="w-14 h-14 rounded-2xl bg-espresso border border-stone overflow-hidden shrink-0 flex items-center justify-center">
+                                <div class="w-10 h-10 rounded-full" style="background: radial-gradient(circle, ${selectedColor} 0%, ${selectedColor} 35%, #111 38%, #111 100%);"></div>
+                            </div>
+                            <div class="flex-1 space-y-2">
+                                <div class="flex flex-wrap gap-2" id="color-swatches">
+                                    ${VINYL_COLORS.map((c, i) => `
+                                        <button type="button" data-color="${c.label}" class="w-6 h-6 rounded-full border-2 ${i === 0 ? 'border-terracotta scale-110' : 'border-transparent'} transition" style="background: ${c.label}" title="${c.name}"></button>
+                                    `).join('')}
+                                </div>
+                                <button type="button" id="btn-create-upload-art" class="px-2.5 py-1 rounded-lg border border-stone bg-alabaster hover:bg-oatmeal text-xs font-mono text-espresso transition">
+                                    Upload Artwork...
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pt-2 flex justify-end gap-2">
+                        <button type="button" id="btn-cancel-modal" class="px-4 py-2 rounded-xl text-xs font-medium text-muted hover:bg-oatmeal transition">Cancel</button>
+                        <button type="button" id="btn-save-pl" class="px-5 py-2 rounded-xl bg-terracotta text-alabaster hover:bg-[#b04b25] text-xs font-medium transition shadow-sm">Create</button>
+                    </div>
+                </div>
+            `);
+
+            const nameInput = modalBody.querySelector('#input-pl-name');
+            const preview = modalBody.querySelector('#create-art-preview');
+            nameInput.focus();
+
+            modalBody.querySelectorAll('#color-swatches button').forEach(btn => {
+                btn.onclick = () => {
+                    selectedColor = btn.dataset.color;
+                    customArtwork = null;
+                    preview.innerHTML = `<div class="w-10 h-10 rounded-full" style="background: radial-gradient(circle, ${selectedColor} 0%, ${selectedColor} 35%, #111 38%, #111 100%);"></div>`;
+                    modalBody.querySelectorAll('#color-swatches button').forEach(b => b.classList.remove('border-terracotta', 'scale-110'));
+                    btn.classList.add('border-terracotta', 'scale-110');
+                };
+            });
+
+            modalBody.querySelector('#btn-create-upload-art').onclick = () => {
+                AppState.artworkUploadCallback = (dataUrl) => {
+                    customArtwork = dataUrl;
+                    preview.innerHTML = `<img src="${dataUrl}" class="w-full h-full object-cover">`;
+                };
+                document.getElementById('file-upload-artwork').click();
+            };
+
+            modalBody.querySelector('#btn-cancel-modal').onclick = closeModal;
+            const saveFn = () => {
+                const name = nameInput.value.trim() || `Playlist #${AppState.playlists.length + 1}`;
+                const newPl = {
+                    id: 'pl-' + Date.now(),
+                    name,
+                    color: selectedColor,
+                    artwork: customArtwork,
+                    trackIds: []
+                };
+                AppState.playlists.push(newPl);
+                persistState();
+                closeModal();
+                openPlaylist(newPl.id);
+            };
+            modalBody.querySelector('#btn-save-pl').onclick = saveFn;
+            nameInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') saveFn();
+            });
+        }
+
+        function showRenamePlaylistModal(playlist) {
+            openModal('Rename Playlist', `
+                <div class="space-y-4">
+                    <div>
+                        <label class="block font-mono text-[11px] uppercase text-muted mb-1">Playlist Name</label>
+                        <input id="input-rename-pl" type="text" value="${escapeHtml(playlist.name)}" class="w-full px-3.5 py-2 rounded-xl bg-oatmeal/60 border border-stone text-sm text-espresso focus:outline-none focus:border-terracotta">
+                    </div>
+                    <div class="pt-2 flex justify-end gap-2">
+                        <button type="button" id="btn-cancel-modal" class="px-4 py-2 rounded-xl text-xs font-medium text-muted hover:bg-oatmeal transition">Cancel</button>
+                        <button type="button" id="btn-save-rename" class="px-5 py-2 rounded-xl bg-terracotta text-alabaster hover:bg-[#b04b25] text-xs font-medium transition shadow-sm">Save</button>
+                    </div>
+                </div>
+            `);
+
+            const input = modalBody.querySelector('#input-rename-pl');
+            input.focus();
+            input.select();
+
+            const saveFn = () => {
+                const val = input.value.trim();
+                if (val) {
+                    playlist.name = val;
+                    persistState();
+                    renderSidebarView();
+                    updatePlayerUI();
+                }
+                closeModal();
+            };
+
+            modalBody.querySelector('#btn-cancel-modal').onclick = closeModal;
+            modalBody.querySelector('#btn-save-rename').onclick = saveFn;
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') saveFn();
+            });
+        }
+
+        function showChangePlaylistArtworkModal(playlist) {
+            let chosenColor = playlist.color || VINYL_COLORS[0].label;
+            let chosenArtwork = playlist.artwork || null;
+
+            openModal('Change Playlist Artwork', `
+                <div class="space-y-4">
+                    <div class="flex items-center gap-4">
+                        <div id="art-preview" class="w-20 h-20 rounded-2xl bg-espresso border border-stone overflow-hidden shrink-0 flex items-center justify-center">
+                            ${chosenArtwork
+                                ? `<img src="${chosenArtwork}" class="w-full h-full object-cover">`
+                                : `<div class="w-14 h-14 rounded-full" style="background: radial-gradient(circle, ${chosenColor} 0%, ${chosenColor} 35%, #111 38%, #111 100%);"></div>`
+                            }
+                        </div>
+                        <div class="flex flex-col gap-2">
+                            <button type="button" id="btn-pick-art" class="px-3.5 py-1.5 rounded-xl bg-terracotta text-alabaster hover:bg-[#b04b25] text-xs font-medium transition">
+                                Upload Image...
+                            </button>
+                            <button type="button" id="btn-reset-art" class="px-3.5 py-1 rounded-xl border border-stone text-xs text-muted hover:text-espresso transition">
+                                Reset to Default
+                            </button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block font-mono text-[11px] uppercase text-muted mb-2">Or Pick Accent Color</label>
+                        <div class="flex flex-wrap gap-2.5" id="art-swatches">
+                            ${VINYL_COLORS.map(c => `
+                                <button type="button" data-color="${c.label}" class="w-7 h-7 rounded-full border-2 ${c.label === chosenColor ? 'border-terracotta scale-110' : 'border-transparent'} transition" style="background: ${c.label}"></button>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div class="pt-2 flex justify-end gap-2">
+                        <button type="button" id="btn-cancel-modal" class="px-4 py-2 rounded-xl text-xs font-medium text-muted hover:bg-oatmeal transition">Cancel</button>
+                        <button type="button" id="btn-save-art" class="px-5 py-2 rounded-xl bg-terracotta text-alabaster hover:bg-[#b04b25] text-xs font-medium transition shadow-sm">Save</button>
+                    </div>
+                </div>
+            `);
+
+            const preview = modalBody.querySelector('#art-preview');
+
+            modalBody.querySelector('#btn-pick-art').onclick = () => {
+                AppState.artworkUploadCallback = (dataUrl) => {
+                    chosenArtwork = dataUrl;
+                    preview.innerHTML = `<img src="${dataUrl}" class="w-full h-full object-cover">`;
+                };
+                document.getElementById('file-upload-artwork').click();
+            };
+
+            modalBody.querySelector('#btn-reset-art').onclick = () => {
+                chosenArtwork = null;
+                preview.innerHTML = `<div class="w-14 h-14 rounded-full" style="background: radial-gradient(circle, ${chosenColor} 0%, ${chosenColor} 35%, #111 38%, #111 100%);"></div>`;
+            };
+
+            modalBody.querySelectorAll('#art-swatches button').forEach(btn => {
+                btn.onclick = () => {
+                    chosenColor = btn.dataset.color;
+                    chosenArtwork = null;
+                    preview.innerHTML = `<div class="w-14 h-14 rounded-full" style="background: radial-gradient(circle, ${chosenColor} 0%, ${chosenColor} 35%, #111 38%, #111 100%);"></div>`;
+                    modalBody.querySelectorAll('#art-swatches button').forEach(b => b.classList.remove('border-terracotta', 'scale-110'));
+                    btn.classList.add('border-terracotta', 'scale-110');
+                };
+            });
+
+            modalBody.querySelector('#btn-cancel-modal').onclick = closeModal;
+            modalBody.querySelector('#btn-save-art').onclick = () => {
+                playlist.color = chosenColor;
+                playlist.artwork = chosenArtwork;
+                persistState();
+                renderSidebarView();
+                closeModal();
+            };
+        }
+
+        function showEditTrackModal(track) {
+            let chosenColor = track.labelColor || VINYL_COLORS[0].label;
+            let chosenAccent = track.accentColor || VINYL_COLORS[0].accent;
+
+            openModal('Edit Song Info', `
+                <div class="space-y-4">
+                    <div>
+                        <label class="block font-mono text-[11px] uppercase text-muted mb-1">Song Title</label>
+                        <input id="input-track-title" type="text" value="${escapeHtml(track.title)}" class="w-full px-3.5 py-2 rounded-xl bg-oatmeal/60 border border-stone text-sm text-espresso focus:outline-none focus:border-terracotta">
+                    </div>
+                    <div>
+                        <label class="block font-mono text-[11px] uppercase text-muted mb-1">Artist</label>
+                        <input id="input-track-artist" type="text" value="${escapeHtml(track.artist)}" class="w-full px-3.5 py-2 rounded-xl bg-oatmeal/60 border border-stone text-sm text-espresso focus:outline-none focus:border-terracotta">
+                    </div>
+                    <div>
+                        <label class="block font-mono text-[11px] uppercase text-muted mb-2">Label Color</label>
+                        <div class="flex flex-wrap gap-2.5" id="track-swatches">
+                            ${VINYL_COLORS.map(c => `
+                                <button type="button" data-color="${c.label}" data-accent="${c.accent}" class="w-7 h-7 rounded-full border-2 ${c.label === chosenColor ? 'border-terracotta scale-110' : 'border-transparent'} transition" style="background: ${c.label}"></button>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div class="pt-2 flex justify-end gap-2">
+                        <button type="button" id="btn-cancel-modal" class="px-4 py-2 rounded-xl text-xs font-medium text-muted hover:bg-oatmeal transition">Cancel</button>
+                        <button type="button" id="btn-save-track" class="px-5 py-2 rounded-xl bg-terracotta text-alabaster hover:bg-[#b04b25] text-xs font-medium transition shadow-sm">Save</button>
+                    </div>
+                </div>
+            `);
+
+            modalBody.querySelectorAll('#track-swatches button').forEach(btn => {
+                btn.onclick = () => {
+                    chosenColor = btn.dataset.color;
+                    chosenAccent = btn.dataset.accent;
+                    modalBody.querySelectorAll('#track-swatches button').forEach(b => b.classList.remove('border-terracotta', 'scale-110'));
+                    btn.classList.add('border-terracotta', 'scale-110');
+                };
+            });
+
+            modalBody.querySelector('#btn-cancel-modal').onclick = closeModal;
+            modalBody.querySelector('#btn-save-track').onclick = () => {
+                const tVal = modalBody.querySelector('#input-track-title').value.trim();
+                const aVal = modalBody.querySelector('#input-track-artist').value.trim();
+                if (tVal) track.title = tVal;
+                if (aVal) track.artist = aVal;
+                track.labelColor = chosenColor;
+                track.accentColor = chosenAccent;
+
+                if (turntable3D && getCurrentTrack() && getCurrentTrack().id === track.id) {
+                    turntable3D.updateRecordLabel(track);
+                }
+                persistState();
+                renderSidebarView();
+                updatePlayerUI();
+                closeModal();
+            };
+        }
+
+        function showAddSongsModal(playlistId) {
+            const pl = AppState.playlists.find(p => p.id === playlistId);
+            if (!pl) return;
+            const allTracks = Object.values(AppState.tracksById);
+
+            openModal(`Add Songs to ${pl.name}`, `
+                <div class="space-y-4">
+                    <div class="p-4 rounded-2xl bg-oatmeal/60 border border-stone flex items-center justify-between gap-3">
+                        <div>
+                            <h4 class="font-medium text-sm text-espresso">Upload Audio Files</h4>
+                            <p class="text-xs text-muted mt-0.5">Select local audio files from your device.</p>
+                        </div>
+                        <button type="button" id="btn-modal-upload-files" class="px-3.5 py-2 rounded-xl bg-terracotta text-alabaster hover:bg-[#b04b25] text-xs font-medium shrink-0 transition shadow-sm">
+                            Browse Files
+                        </button>
+                    </div>
+
+                    <div>
+                        <label class="block font-mono text-[11px] uppercase text-muted mb-2">Or Add from Library</label>
+                        <div class="max-h-52 overflow-y-auto space-y-1.5 pr-1">
+                            ${allTracks.map(t => `
+                                <div class="flex items-center justify-between px-3 py-2 rounded-xl bg-alabaster border border-stone/60">
+                                    <div class="min-w-0 flex-1 pr-2">
+                                        <p class="text-xs font-medium text-espresso truncate">${escapeHtml(t.title)}</p>
+                                        <p class="text-[11px] text-muted truncate">${escapeHtml(t.artist)} •${formatTime(t.duration)}</p>
+                                    </div>
+                                    <button type="button" data-track-id="${t.id}" class="btn-add-existing px-2.5 py-1 rounded-lg text-[11px] font-mono bg-oatmeal hover:bg-terracotta hover:text-alabaster text-espresso transition">
+                                        + Add
+                                    </button>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <div class="pt-1 flex justify-end">
+                        <button type="button" id="btn-done-adding" class="px-5 py-2 rounded-xl bg-terracotta text-alabaster text-xs font-medium">Done</button>
+                    </div>
+                </div>
+            `);
+
+            modalBody.querySelector('#btn-modal-upload-files').onclick = () => {
+                AppState.pendingAddSongsPlaylistId = playlistId;
+                closeModal();
+                document.getElementById('file-upload-audio').click();
+            };
+
+            modalBody.querySelectorAll('.btn-add-existing').forEach(btn => {
+                btn.onclick = () => {
+                    pl.trackIds.push(btn.dataset.trackId);
+                    btn.textContent = 'Added ✓';
+                    persistState();
+                    renderSidebarView();
+                };
+            });
+
+            modalBody.querySelector('#btn-done-adding').onclick = closeModal;
+        }
+
+        function showCopyTrackToPlaylistModal(track) {
+            openModal('Add to Playlist', `
+                <div class="space-y-2">
+                    ${AppState.playlists.map(pl => `
+                        <button type="button" data-pl-id="${pl.id}" class="btn-pick-target-pl w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-oatmeal/50 hover:bg-oatmeal border border-stone/60 transition text-left">
+                            <span class="text-sm font-medium text-espresso truncate">${escapeHtml(pl.name)}</span>
+                            <span class="font-mono text-xs text-terracotta">+ Add</span>
+                        </button>
+                    `).join('')}
+                </div>
+            `);
+
+            modalBody.querySelectorAll('.btn-pick-target-pl').forEach(btn => {
+                btn.onclick = () => {
+                    const targetPl = AppState.playlists.find(p => p.id === btn.dataset.plId);
+                    if (targetPl) {
+                        targetPl.trackIds.push(track.id);
+                        persistState();
+                        renderSidebarView();
+                    }
+                    closeModal();
+                };
+            });
+        }
+
+        /***********************************************************************
+         * 8. PLAYBACK STATE ACTIONS & FILE UPLOAD HANDLER
+         ***********************************************************************/
+        function selectAndPlayTrack(index) {
+            const pl = getPlayingPlaylist();
+            if (!pl || !pl.trackIds.length) return;
+
+            const boundedIdx = Math.max(0, Math.min(index, pl.trackIds.length - 1));
+            const isSameTrack = AppState.hasActiveSession && boundedIdx === AppState.currentIndex && AppState.playbackState !== 'STOPPED';
+            AppState.currentIndex = boundedIdx;
+            AppState.hasActiveSession = true;
+
+            const track = getCurrentTrack();
+            if (!track) return;
+
+            AppState.duration = track.duration || 135;
+            AppState.currentTime = 0;
+            AppState.playbackState = 'PLAYING';
+
+            if (turntable3D) {
+                if (AppState.uiView === 'PLAYLIST_DETAIL') {
+                    turntable3D.setCameraView('top');
+                }
+                if (isSameTrack && turntable3D.mechState === 'PAUSED') {
+                    turntable3D.mechState = 'PLAYING';
+                } else {
+                    turntable3D.triggerTrackChange(track, true);
+                }
+            }
+
+            audioEngine.playTrack(track, 0);
+            renderSidebarView();
+            updatePlayerUI();
+        }
+
+        function togglePlayPause() {
+            const track = getCurrentTrack();
+            if (!track) return;
+
+            AppState.hasActiveSession = true;
+
+            if (AppState.playbackState === 'PLAYING') {
+                AppState.playbackState = 'PAUSED';
+                audioEngine.pauseAudio();
+                if (turntable3D) turntable3D.mechState = 'PAUSED';
+            } else if (AppState.playbackState === 'PAUSED') {
+                AppState.playbackState = 'PLAYING';
+                audioEngine.playTrack(track, AppState.currentTime);
+                if (turntable3D) {
+                    if (AppState.uiView === 'PLAYLIST_DETAIL') {
+                        turntable3D.setCameraView('top');
+                    }
+                    turntable3D.mechState = 'PLAYING';
+                }
+            } else {
+                AppState.playbackState = 'PLAYING';
+                if (turntable3D) {
+                    if (AppState.uiView === 'PLAYLIST_DETAIL') {
+                        turntable3D.setCameraView('top');
+                    }
+                    turntable3D.triggerTrackChange(track, true);
+                }
+                audioEngine.playTrack(track, AppState.currentTime);
+            }
+
+            renderSidebarView();
+            updatePlayerUI();
+        }
+
+        function stopPlayback() {
+            AppState.playbackState = 'STOPPED';
+            AppState.currentTime = 0;
+            audioEngine.stopAllAudioOnly();
+            if (turntable3D) {
+                turntable3D.mechState = 'RETURNING_ARM';
+            }
+            renderSidebarView();
+            updatePlayerUI();
+        }
+
+        function handleTrackEnded() {
+            const pl = getPlayingPlaylist();
+            if (!pl || !pl.trackIds.length) return;
+
+            if (AppState.repeatMode === 'ONE') {
+                selectAndPlayTrack(AppState.currentIndex);
+                return;
+            }
+
+            if (AppState.shuffleEnabled && pl.trackIds.length > 1) {
+                let nextIdx = AppState.currentIndex;
+                while (nextIdx === AppState.currentIndex) {
+                    nextIdx = Math.floor(Math.random() * pl.trackIds.length);
+                }
+                selectAndPlayTrack(nextIdx);
+                return;
+            }
+
+            const isLast = AppState.currentIndex >= pl.trackIds.length - 1;
+            if (isLast && AppState.repeatMode === 'OFF') {
+                stopPlayback();
+            } else {
+                playNextTrack();
+            }
+        }
+
+        function playNextTrack() {
+            const pl = getPlayingPlaylist();
+            if (!pl || !pl.trackIds.length) return;
+
+            if (AppState.shuffleEnabled && pl.trackIds.length > 1) {
+                let nextIdx = AppState.currentIndex;
+                while (nextIdx === AppState.currentIndex) {
+                    nextIdx = Math.floor(Math.random() * pl.trackIds.length);
+                }
+                selectAndPlayTrack(nextIdx);
+                return;
+            }
+
+            const nextIdx = (AppState.currentIndex + 1) % pl.trackIds.length;
+            selectAndPlayTrack(nextIdx);
+        }
+
+        function playPrevTrack() {
+            const pl = getPlayingPlaylist();
+            if (!pl || !pl.trackIds.length) return;
+
+            if (AppState.currentTime > 4) {
+                audioEngine.seek(0);
+                updatePlayerUI();
+                return;
+            }
+            const prevIdx = (AppState.currentIndex - 1 + pl.trackIds.length) % pl.trackIds.length;
+            selectAndPlayTrack(prevIdx);
+        }
+
+        async function handleLocalFiles(fileList, targetPlaylistId = null) {
+            if (!fileList || fileList.length === 0) return;
+            const validFiles = Array.from(fileList).filter(f =>
+                f.type.startsWith('audio/') || /\.(mp3|wav|ogg|flac|m4a|aac)$/i.test(f.name)
+            );
+            if (validFiles.length === 0) return;
+
+            const destPlId = targetPlaylistId || AppState.viewedPlaylistId || AppState.playingPlaylistId || AppState.playlists[0].id;
+            const destPl = AppState.playlists.find(p => p.id === destPlId) || AppState.playlists[0];
+            const firstAddedIndex = destPl.trackIds.length;
+
+            for (let i = 0; i < validFiles.length; i++) {
+                const file = validFiles[i];
+                const id = `local-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+                const url = URL.createObjectURL(file);
+                const meta = await parseAudioTitleArtist(file);
+
+                const palette = VINYL_COLORS[(Object.keys(AppState.tracksById).length + i) % VINYL_COLORS.length];
+                const newTrack = {
+                    id,
+                    title: meta.title,
+                    artist: meta.artist,
+                    duration: 180,
+                    isSynth: false,
+                    url,
+                    labelColor: palette.label,
+                    accentColor: palette.accent
+                };
+
+                AppState.tracksById[id] = newTrack;
+                destPl.trackIds.push(id);
+                await storageDB.saveAudioBlob(id, file);
+
+                const tempAudio = new Audio(url);
+                tempAudio.addEventListener('loadedmetadata', () => {
+                    if (tempAudio.duration && !isNaN(tempAudio.duration)) {
+                        newTrack.duration = tempAudio.duration;
+                        if (getCurrentTrack() && getCurrentTrack().id === newTrack.id) {
+                            AppState.duration = tempAudio.duration;
+                        }
+                        persistState();
+                        renderSidebarView();
+                        updatePlayerUI();
+                    }
+                });
+            }
+
+            await persistState();
+            AppState.playingPlaylistId = destPl.id;
+            openPlaylist(destPl.id);
+            selectAndPlayTrack(firstAddedIndex);
+        }
+
+        /***********************************************************************
+         * 9. INITIALIZATION & ANIMATION LOOP
+         ***********************************************************************/
+        async function hydrateLibrary() {
+            await storageDB.init();
+            const saved = await storageDB.loadMetadata();
+
+            if (saved && saved.playlists && saved.playlists.length > 0 && saved.tracks) {
+                AppState.tracksById = saved.tracks;
+                AppState.playlists = saved.playlists;
+
+                for (const track of Object.values(AppState.tracksById)) {
+                    if (!track.isSynth) {
+                        const blob = await storageDB.getAudioBlob(track.id);
+                        if (blob) {
+                            track.url = URL.createObjectURL(blob);
+                        }
+                    }
+                }
+                DEFAULT_SYNTH_TRACKS.forEach(st => {
+                    if (!AppState.tracksById[st.id]) AppState.tracksById[st.id] = { ...st };
+                });
+            } else {
+                DEFAULT_SYNTH_TRACKS.forEach(t => {
+                    AppState.tracksById[t.id] = { ...t };
+                });
+                AppState.playlists = [
+                    {
+                        id: 'pl-default-1',
+                        name: 'Late Night Sessions',
+                        color: '#C85A32',
+                        artwork: null,
+                        trackIds: ['synth-1', 'synth-2', 'synth-3', 'synth-4']
+                    },
+                    {
+                        id: 'pl-default-2',
+                        name: 'Evening Ambient',
+                        color: '#2A6F97',
+                        artwork: null,
+                        trackIds: ['synth-2', 'synth-3']
+                    }
+                ];
+                await persistState();
+            }
+
+            AppState.playingPlaylistId = null;
+            AppState.hasActiveSession = false;
+            AppState.currentIndex = 0;
+        }
+
+        window.onload = async function () {
+            await hydrateLibrary();
+
+            turntable3D = new Turntable3D('canvas-container');
+
+            renderSidebarView();
+            updatePlayerUI();
+
+            window.addEventListener('click', () => closeContextMenu());
+
+            // Compact Left-to-Right Light / Dark Theme Toggle
+            document.getElementById('btn-theme-toggle').addEventListener('click', () => {
+                AppState.isDarkMode = !AppState.isDarkMode;
+                document.body.classList.toggle('dark-theme', AppState.isDarkMode);
+
+                const thumb = document.getElementById('theme-toggle-thumb');
+                const lightLbl = document.getElementById('theme-label-light');
+                const darkLbl = document.getElementById('theme-label-dark');
+
+                if (AppState.isDarkMode) {
+                    thumb.style.transform = 'translateX(32px)';
+                    lightLbl.className = 'w-6 h-6 flex items-center justify-center text-muted transition-colors duration-300';
+                    darkLbl.className = 'w-6 h-6 flex items-center justify-center text-alabaster transition-colors duration-300';
+                } else {
+                    thumb.style.transform = 'translateX(0px)';
+                    lightLbl.className = 'w-6 h-6 flex items-center justify-center text-alabaster transition-colors duration-300';
+                    darkLbl.className = 'w-6 h-6 flex items-center justify-center text-muted transition-colors duration-300';
+                }
+
+                if (turntable3D) {
+                    turntable3D.setTheme(AppState.isDarkMode);
+                }
+            });
+
+            // Bind Transport Controls
+            document.getElementById('btn-play').addEventListener('click', togglePlayPause);
+            document.getElementById('btn-stop').addEventListener('click', stopPlayback);
+            document.getElementById('btn-next').addEventListener('click', playNextTrack);
+            document.getElementById('btn-prev').addEventListener('click', playPrevTrack);
+
+            document.getElementById('btn-shuffle').addEventListener('click', () => {
+                AppState.shuffleEnabled = !AppState.shuffleEnabled;
+                updatePlayerUI();
+            });
+
+            document.getElementById('btn-repeat').addEventListener('click', () => {
+                const modes = ['OFF', 'ALL', 'ONE'];
+                AppState.repeatMode = modes[(modes.indexOf(AppState.repeatMode) + 1) % modes.length];
+                updatePlayerUI();
+            });
+
+            // Opened Playlist Hero Controls
+            document.getElementById('btn-back-playlists').addEventListener('click', () => {
+                AppState.uiView = 'PLAYLISTS';
+                AppState.isReorderMode = false;
+                renderSidebarView();
+                if (turntable3D) {
+                    turntable3D.setCameraView('side');
+                }
+            });
+
+            document.getElementById('btn-hero-playlist-menu').addEventListener('click', (e) => {
+                e.stopPropagation();
+                const pl = getViewedPlaylist();
+                if (pl) openPlaylistContextMenu(e.currentTarget, pl);
+            });
+
+            document.getElementById('hero-playlist-artwork').addEventListener('click', () => {
+                const pl = getViewedPlaylist();
+                if (pl) showChangePlaylistArtworkModal(pl);
+            });
+
+            document.getElementById('btn-hero-play').addEventListener('click', () => {
+                const pl = getViewedPlaylist();
+                if (pl && pl.trackIds.length > 0) {
+                    AppState.playingPlaylistId = pl.id;
+                    selectAndPlayTrack(0);
+                }
+            });
+
+            document.getElementById('btn-hero-add-songs').addEventListener('click', () => {
+                if (AppState.viewedPlaylistId) {
+                    showAddSongsModal(AppState.viewedPlaylistId);
+                }
+            });
+
+            document.getElementById('btn-toggle-reorder').addEventListener('click', () => {
+                AppState.isReorderMode = !AppState.isReorderMode;
+                renderSidebarView();
+            });
+
+            document.getElementById('btn-create-playlist').addEventListener('click', showCreatePlaylistModal);
+
+            // Seek Slider
+            const seekSlider = document.getElementById('seek-slider');
+            seekSlider.addEventListener('input', (e) => {
+                AppState.isSeeking = true;
+                const ratio = parseFloat(e.target.value) / 1000;
+                const previewTime = ratio * AppState.duration;
+                document.getElementById('seek-fill').style.width = `${ratio * 100}%`;
+                document.getElementById('time-current').textContent = formatTime(previewTime);
+            });
+            seekSlider.addEventListener('change', (e) => {
+                const ratio = parseFloat(e.target.value) / 1000;
+                audioEngine.seek(ratio * AppState.duration);
+                AppState.isSeeking = false;
+                updatePlayerUI();
+            });
+
+            // Volume & Mute
+            const volSlider = document.getElementById('vol-slider');
+            volSlider.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                AppState.isMuted = val === 0;
+                audioEngine.setVolume(val);
+                document.getElementById('vol-fill').style.width = `${val * 100}%`;
+            });
+
+            document.getElementById('btn-mute').addEventListener('click', () => {
+                AppState.isMuted = !AppState.isMuted;
+                audioEngine.setVolume(AppState.volume);
+                document.getElementById('vol-fill').style.width = AppState.isMuted ? '0%' : `${AppState.volume * 100}%`;
+            });
+
+            // Crackle Toggle
+            document.getElementById('btn-crackle').addEventListener('click', () => {
+                AppState.crackleEnabled = !AppState.crackleEnabled;
+                const dot = document.getElementById('crackle-dot');
+                dot.className = AppState.crackleEnabled
+                    ? 'w-2 h-2 rounded-full bg-terracotta'
+                    : 'w-2 h-2 rounded-full bg-stone';
+                audioEngine.updateCrackleLevel();
+            });
+
+            // Acrylic Dust Cover Toggle
+            const coverBtn = document.getElementById('btn-cover-toggle');
+            coverBtn.addEventListener('click', () => {
+                if (turntable3D) {
+                    const isOpen = turntable3D.toggleDustCover();
+                    coverBtn.className = isOpen
+                        ? 'px-2.5 py-1 rounded-xl font-mono text-[11px] text-espresso hover:bg-oatmeal transition'
+                        : 'px-2.5 py-1 rounded-xl font-mono text-[11px] bg-terracotta text-alabaster transition';
+                }
+            });
+
+            // Manual Camera Angle Presets
+            document.querySelectorAll('.cam-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    turntable3D.setCameraView(btn.dataset.cam);
+                });
+            });
+
+            // File Uploads & Drag-and-Drop
+            document.getElementById('file-upload-audio').addEventListener('change', (e) => {
+                handleLocalFiles(e.target.files, AppState.pendingAddSongsPlaylistId);
+                AppState.pendingAddSongsPlaylistId = null;
+                e.target.value = '';
+            });
+
+            document.getElementById('file-upload-artwork').addEventListener('change', (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (file && AppState.artworkUploadCallback) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        if (AppState.artworkUploadCallback) {
+                            AppState.artworkUploadCallback(ev.target.result);
+                            AppState.artworkUploadCallback = null;
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                }
+                e.target.value = '';
+            });
+
+            const dropOverlay = document.getElementById('drop-overlay');
+            window.addEventListener('dragover', (e) => {
+                if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+                    e.preventDefault();
+                    dropOverlay.classList.remove('hidden');
+                    dropOverlay.classList.add('flex');
+                }
+            });
+            window.addEventListener('dragleave', (e) => {
+                if (e.relatedTarget === null) {
+                    dropOverlay.classList.add('hidden');
+                    dropOverlay.classList.remove('flex');
+                }
+            });
+            window.addEventListener('drop', (e) => {
+                if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    e.preventDefault();
+                    dropOverlay.classList.add('hidden');
+                    dropOverlay.classList.remove('flex');
+                    handleLocalFiles(e.dataTransfer.files);
+                }
+            });
+
+            // Timer ticker for built-in synth tracks
+            setInterval(() => {
+                const track = getCurrentTrack();
+                if (AppState.playbackState === 'PLAYING' && track && track.isSynth && !AppState.isSeeking) {
+                    AppState.currentTime += 0.25;
+                    if (AppState.currentTime >= AppState.duration) {
+                        handleTrackEnded();
+                    } else {
+                        updatePlayerUI();
+                    }
+                }
+            }, 250);
+
+            function animate() {
+                requestAnimationFrame(animate);
+                if (turntable3D) {
+                    turntable3D.update();
+                }
+            }
+            animate();
+        };
+    </script>
+</body>
+</html>
