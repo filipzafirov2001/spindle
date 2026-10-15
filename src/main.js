@@ -102,18 +102,23 @@ async function initApp() {
         if (!isIntroActive) return;
         isIntroActive = false;
 
-        // 1. Fade out intro prompt & remove click catcher
+        // 1. Fade out intro prompt & disable click catcher immediately
+        if (introOverlay) {
+            introOverlay.style.pointerEvents = 'none';
+            introOverlay.remove();
+        }
         if (introPrompt) {
             introPrompt.classList.add('opacity-0');
             setTimeout(() => introPrompt.remove(), 700);
-        }
-        if (introOverlay) {
-            introOverlay.remove();
         }
 
         // 2. Slide sidebar panel into view from the left
         if (sidebarPanel) {
             sidebarPanel.classList.remove('intro-hidden');
+            sidebarPanel.addEventListener('transitionend', () => {
+                const tt = getTurntable();
+                if (tt) tt.resize();
+            }, { once: true });
         }
 
         // 3. Fade in HUD controls

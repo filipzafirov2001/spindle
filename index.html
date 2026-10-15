@@ -35,6 +35,27 @@
             }
         }
     </script>
+    <style>
+        /* Critical initial styles to guarantee zero FOUC flash of sidebar on startup */
+        #sidebar-panel.intro-hidden {
+            margin-top: -100vh !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+        @media (min-width: 1024px) {
+            #sidebar-panel.intro-hidden {
+                margin-top: 0 !important;
+                margin-left: -460px !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+            }
+        }
+        @media (min-width: 1280px) {
+            #sidebar-panel.intro-hidden {
+                margin-left: -510px !important;
+            }
+        }
+    </style>
 </head>
 <body class="h-screen w-screen flex flex-col lg:flex-row overflow-hidden">
 

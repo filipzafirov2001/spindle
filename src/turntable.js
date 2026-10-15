@@ -43,10 +43,13 @@ export class Turntable3D {
         this.controls.minDistance = 3.8;
         this.controls.maxDistance = 14;
         this.controls.enabled = !this.introMode;
+        this.isTransitioningFromIntro = false;
 
-        // Cancel automated camera transition if user manually grabs the orbit canvas
+        // Cancel automated camera transition if user manually grabs the orbit canvas (only after intro)
         this.renderer.domElement.addEventListener('pointerdown', () => {
-            this.camAnim = null;
+            if (!this.introMode && !this.isTransitioningFromIntro) {
+                this.camAnim = null;
+            }
         });
 
         this.clock = new THREE.Clock();
@@ -1394,9 +1397,14 @@ export class Turntable3D {
 
     revealFromIntro() {
         this.introMode = false;
-        this.controls.enabled = true;
+        this.isTransitioningFromIntro = true;
         this.dustCoverOpen = true;
         this.setCameraView('iso');
+
+        setTimeout(() => {
+            this.isTransitioningFromIntro = false;
+            this.controls.enabled = true;
+        }, 1700);
 
         const coverBtn = document.getElementById('btn-cover-toggle');
         if (coverBtn) {
@@ -1488,15 +1496,24 @@ export class Turntable3D {
 
     bindResize() {
         window.addEventListener('resize', () => this.resize());
-        if (typeof ResizeObserver !== 'undefined') {
-            this.resizeObserver = new ResizeObserver(() => this.resize());
-            this.resizeObserver.observe(this.container);
-        }
     }
 
     update() {
         const dt = Math.min(this.clock.getDelta(), 0.1);
         const elapsed = this.clock.getElapsedTime();
+
+        // Smooth aspect ratio tracking without clearing the WebGL drawing buffer
+        if (this.container) {
+            const cw = this.container.clientWidth;
+            const ch = this.container.clientHeight;
+            if (cw > 0 && ch > 0) {
+                const targetAspect = cw / ch;
+                if (Math.abs(this.camera.aspect - targetAspect) > 0.001) {
+                    this.camera.aspect = targetAspect;
+                    this.camera.updateProjectionMatrix();
+                }
+            }
+        }
 
         const progress = AppState.duration > 0
             ? Math.min(1, Math.max(0, AppState.currentTime / AppState.duration))

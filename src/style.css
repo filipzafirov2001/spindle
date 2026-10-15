@@ -140,6 +140,12 @@ body.dark-theme ::-webkit-scrollbar-thumb {
 }
 
 /* Startup Intro: Sidebar starts slid off-screen to the left */
+#canvas-container canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+
 #sidebar-panel {
     transition: margin-left 850ms cubic-bezier(0.16, 1, 0.3, 1),
                 margin-top 850ms cubic-bezier(0.16, 1, 0.3, 1),
