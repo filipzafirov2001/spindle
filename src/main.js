@@ -22,7 +22,8 @@ import {
     openPlaylistContextMenu,
     handleLocalFiles,
     formatTime,
-    selectAndPlayTrack
+    selectAndPlayTrack,
+    showYoutubeImportModal
 } from './ui.js';
 
 async function hydrateLibrary() {
@@ -35,9 +36,13 @@ async function hydrateLibrary() {
 
         for (const track of Object.values(AppState.tracksById)) {
             if (!track.isSynth) {
-                const blob = await storageDB.getAudioBlob(track.id);
-                if (blob) {
-                    track.url = URL.createObjectURL(blob);
+                if (track.filePath) {
+                    track.url = `spindle-media://local/${encodeURIComponent(track.filePath)}`;
+                } else {
+                    const blob = await storageDB.getAudioBlob(track.id);
+                    if (blob) {
+                        track.url = URL.createObjectURL(blob);
+                    }
                 }
             }
         }
@@ -297,6 +302,14 @@ async function initApp() {
         if (AppState.viewedPlaylistId) {
             showAddSongsModal(AppState.viewedPlaylistId);
         }
+    });
+
+    document.getElementById('btn-hero-import-yt')?.addEventListener('click', () => {
+        showYoutubeImportModal(AppState.viewedPlaylistId);
+    });
+
+    document.getElementById('btn-overview-import-yt')?.addEventListener('click', () => {
+        showYoutubeImportModal(null);
     });
 
     document.getElementById('btn-toggle-reorder').addEventListener('click', () => {

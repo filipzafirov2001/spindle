@@ -16,10 +16,12 @@
 - [ ] Storage Quota Management: Monitor browser/local storage limits for cached audio blobs.
 
 ## 3. Desktop Application Architecture (Cross-Platform)
-- [ ] Wrap with Tauri (recommended) or Electron for a discrete desktop app.
-- [ ] Local filesystem storage for tracks rather than browser IndexedDB constraints.
+- [x] Wrapped with Electron for a high-performance native desktop app (`npm run dev:desktop`, `npm run electron`).
+- [x] Local filesystem storage for tracks in `~/Music/Spindle/<Playlist>/` with custom privileged `spindle-media://` range streaming protocol (supporting HTTP 206 seeking).
 
-## 4. YouTube Music / URL Downloader Feature (Brainstorming)
-- [ ] In background/backend process, integrate `yt-dlp` and `ffmpeg`.
-- [ ] Accept YouTube / YT Music URL, extract audio to high-quality audio file with embedded metadata and artwork.
-- [ ] Automatically index downloaded tracks directly into the Spindle playlist system.
+## 4. YouTube Music / URL Downloader Feature
+- [x] Integrated `yt-dlp` and `ffmpeg` backend execution via IPC with real-time download and conversion progress streaming.
+- [x] Accepts YouTube & YT Music URLs, extracts best-quality MP3 (320kbps / VBR 0), embeds album artwork and ID3 metadata.
+- [x] Real-time UI modal with live video metadata preview (thumbnail, editable song title, artist, duration) and smooth progress bar.
+- [x] Automatically indexes downloaded tracks into the Spindle playlist system, opens the playlist, drops the needle, and begins immediate 3D turntable playback.
+- [x] Direct shortcuts added to opened playlist hero, playlists overview header, "Add Songs" modal, and 3-dot context menus ("Import from YouTube", "Show in File Manager").

@@ -641,14 +641,29 @@ export function positionContextMenu(triggerBtn) {
 }
 
 export function openPlaylistContextMenu(triggerBtn, playlist) {
+    const isDesktop = typeof window !== 'undefined' && !!window.spindleDesktop;
     const contextMenuEl = document.getElementById('context-menu');
     contextMenuEl.innerHTML = `
+        <button data-action="import-yt" class="w-full text-left px-3.5 py-2 hover:bg-oatmeal flex items-center gap-2.5 transition">
+            <svg class="w-3.5 h-3.5 text-terracotta" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+            </svg>
+            <span>Import from YouTube</span>
+        </button>
         <button data-action="rename" class="w-full text-left px-3.5 py-2 hover:bg-oatmeal flex items-center gap-2.5 transition">
             <span>Rename</span>
         </button>
         <button data-action="artwork" class="w-full text-left px-3.5 py-2 hover:bg-oatmeal flex items-center gap-2.5 transition">
             <span>Change Artwork</span>
         </button>
+        ${isDesktop ? `
+        <button data-action="open-folder" class="w-full text-left px-3.5 py-2 hover:bg-oatmeal flex items-center gap-2.5 transition">
+            <svg class="w-3.5 h-3.5 text-muted" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+            </svg>
+            <span>Show in File Manager</span>
+        </button>
+        ` : ''}
         <div class="my-1 border-t border-stone/40"></div>
         <button data-action="remove" class="w-full text-left px-3.5 py-2 hover:bg-red-500/10 text-red-600 flex items-center gap-2.5 transition">
             <span>Remove</span>
@@ -656,6 +671,10 @@ export function openPlaylistContextMenu(triggerBtn, playlist) {
     `;
     positionContextMenu(triggerBtn);
 
+    contextMenuEl.querySelector('[data-action="import-yt"]').onclick = () => {
+        closeContextMenu();
+        showYoutubeImportModal(playlist.id);
+    };
     contextMenuEl.querySelector('[data-action="rename"]').onclick = () => {
         closeContextMenu();
         showRenamePlaylistModal(playlist);
@@ -664,6 +683,12 @@ export function openPlaylistContextMenu(triggerBtn, playlist) {
         closeContextMenu();
         showChangePlaylistArtworkModal(playlist);
     };
+    if (isDesktop && contextMenuEl.querySelector('[data-action="open-folder"]')) {
+        contextMenuEl.querySelector('[data-action="open-folder"]').onclick = () => {
+            closeContextMenu();
+            window.spindleDesktop.openMusicFolder(playlist.name);
+        };
+    }
     contextMenuEl.querySelector('[data-action="remove"]').onclick = () => {
         closeContextMenu();
         removePlaylist(playlist.id);
@@ -671,6 +696,7 @@ export function openPlaylistContextMenu(triggerBtn, playlist) {
 }
 
 export function openSongContextMenu(triggerBtn, playlist, track, index) {
+    const isDesktop = typeof window !== 'undefined' && !!window.spindleDesktop;
     const contextMenuEl = document.getElementById('context-menu');
     contextMenuEl.innerHTML = `
         <button data-action="edit" class="w-full text-left px-3.5 py-2 hover:bg-oatmeal flex items-center gap-2.5 transition">
@@ -682,6 +708,14 @@ export function openSongContextMenu(triggerBtn, playlist, track, index) {
         <button data-action="reorder" class="w-full text-left px-3.5 py-2 hover:bg-oatmeal flex items-center gap-2.5 transition">
             <span>Reorder Playlist</span>
         </button>
+        ${isDesktop && track.filePath ? `
+        <button data-action="show-file" class="w-full text-left px-3.5 py-2 hover:bg-oatmeal flex items-center gap-2.5 transition">
+            <svg class="w-3.5 h-3.5 text-muted" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+            </svg>
+            <span>Show File in Folder</span>
+        </button>
+        ` : ''}
         <div class="my-1 border-t border-stone/40"></div>
         <button data-action="remove-song" class="w-full text-left px-3.5 py-2 hover:bg-red-500/10 text-red-600 flex items-center gap-2.5 transition">
             <span>Remove from Playlist</span>
@@ -702,6 +736,12 @@ export function openSongContextMenu(triggerBtn, playlist, track, index) {
         AppState.isReorderMode = true;
         renderSidebarView();
     };
+    if (isDesktop && contextMenuEl.querySelector('[data-action="show-file"]')) {
+        contextMenuEl.querySelector('[data-action="show-file"]').onclick = () => {
+            closeContextMenu();
+            window.spindleDesktop.openMusicFolder(playlist.name);
+        };
+    }
     contextMenuEl.querySelector('[data-action="remove-song"]').onclick = () => {
         closeContextMenu();
         removeSongFromPlaylist(playlist.id, index);
@@ -1039,11 +1079,35 @@ export function showAddSongsModal(playlistId) {
     openModal(`Add Songs to ${pl.name}`, `
         <div class="space-y-4">
             <div class="p-4 rounded-2xl bg-oatmeal/60 border border-stone flex items-center justify-between gap-3">
-                <div>
-                    <h4 class="font-medium text-sm text-espresso">Upload Audio Files</h4>
-                    <p class="text-xs text-muted mt-0.5">Select local audio files from your device.</p>
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-8 h-8 rounded-xl bg-terracotta/15 text-terracotta flex items-center justify-center shrink-0">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                        </svg>
+                    </div>
+                    <div class="min-w-0">
+                        <h4 class="font-medium text-sm text-espresso truncate">Import from YouTube / URL</h4>
+                        <p class="text-xs text-muted truncate mt-0.5">Paste link to extract high-quality audio.</p>
+                    </div>
                 </div>
-                <button type="button" id="btn-modal-upload-files" class="px-3.5 py-2 rounded-xl bg-terracotta text-alabaster hover:bg-[#b04b25] text-xs font-medium shrink-0 transition shadow-sm">
+                <button type="button" id="btn-modal-import-yt" class="px-3.5 py-2 rounded-xl border border-stone bg-alabaster hover:bg-oatmeal text-espresso text-xs font-medium shrink-0 transition shadow-sm active:scale-95">
+                    Import URL
+                </button>
+            </div>
+
+            <div class="p-4 rounded-2xl bg-oatmeal/60 border border-stone flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-8 h-8 rounded-xl bg-stone/70 text-espresso flex items-center justify-center shrink-0">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 15a4 4 0 004 4h10a4 4 0 004-4M12 4v12m0-12l-4 4m4-4l4 4"/>
+                        </svg>
+                    </div>
+                    <div class="min-w-0">
+                        <h4 class="font-medium text-sm text-espresso truncate">Upload Audio Files</h4>
+                        <p class="text-xs text-muted truncate mt-0.5">Select local audio files from your device.</p>
+                    </div>
+                </div>
+                <button type="button" id="btn-modal-upload-files" class="px-3.5 py-2 rounded-xl bg-terracotta text-alabaster hover:bg-[#b04b25] text-xs font-medium shrink-0 transition shadow-sm active:scale-95">
                     Browse Files
                 </button>
             </div>
@@ -1070,6 +1134,11 @@ export function showAddSongsModal(playlistId) {
             </div>
         </div>
     `);
+
+    modalBody.querySelector('#btn-modal-import-yt').onclick = () => {
+        closeModal();
+        showYoutubeImportModal(playlistId);
+    };
 
     modalBody.querySelector('#btn-modal-upload-files').onclick = () => {
         AppState.pendingAddSongsPlaylistId = playlistId;
@@ -1112,6 +1181,370 @@ export function showCopyTrackToPlaylistModal(track) {
             }
             closeModal();
         };
+    });
+}
+
+export async function showYoutubeImportModal(targetPlaylistId = null) {
+    const isDesktop = typeof window !== 'undefined' && !!window.spindleDesktop;
+    const destPlId = targetPlaylistId || AppState.viewedPlaylistId || (AppState.playlists[0] ? AppState.playlists[0].id : null);
+    let selectedPl = AppState.playlists.find(p => p.id === destPlId) || AppState.playlists[0];
+
+    if (!isDesktop) {
+        openModal('Import Audio from YouTube', `
+            <div class="space-y-4">
+                <div class="p-4 rounded-2xl bg-oatmeal/60 border border-stone/80 text-espresso space-y-2.5">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-terracotta"></span>
+                        <h4 class="font-serif text-lg font-medium text-espresso">Spindle Desktop App Feature</h4>
+                    </div>
+                    <p class="text-xs text-muted leading-relaxed">
+                        YouTube and YouTube Music audio extraction runs natively in the Spindle Desktop application. It uses local <code>yt-dlp</code> and <code>ffmpeg</code> to download high-resolution audio files (320kbps MP3) with embedded tags directly to <code>~/Music/Spindle/</code>.
+                    </p>
+                    <div class="p-3 rounded-xl bg-alabaster border border-stone/60 font-mono text-[11px] text-espresso select-all">
+                        npm run dev:desktop
+                    </div>
+                </div>
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" id="btn-browser-browse-files" class="px-4 py-2 rounded-xl border border-stone bg-oatmeal hover:bg-stone text-xs font-medium text-espresso transition">
+                        Browse Local Files
+                    </button>
+                    <button type="button" id="btn-close-modal" class="px-5 py-2 rounded-xl bg-terracotta text-alabaster text-xs font-medium transition shadow-sm">
+                        Close
+                    </button>
+                </div>
+            </div>
+        `);
+
+        document.getElementById('modal-body').querySelector('#btn-browser-browse-files').onclick = () => {
+            closeModal();
+            AppState.pendingAddSongsPlaylistId = destPlId;
+            document.getElementById('file-upload-audio').click();
+        };
+        document.getElementById('modal-body').querySelector('#btn-close-modal').onclick = closeModal;
+        return;
+    }
+
+    // Inside Electron Desktop
+    openModal('Import Audio from YouTube', `
+        <div class="space-y-4">
+            <div id="yt-checking-tools" class="flex items-center gap-2 text-xs font-mono text-muted py-2">
+                <span class="w-2 h-2 rounded-full bg-terracotta animate-ping"></span>
+                <span>Verifying audio download tools (yt-dlp &amp; ffmpeg)...</span>
+            </div>
+            <div id="yt-content-wrapper" class="hidden space-y-4">
+                <!-- Target playlist picker -->
+                <div>
+                    <label class="block font-mono text-[11px] uppercase text-muted mb-1">Add to Playlist</label>
+                    <select id="select-yt-playlist" class="w-full px-3 py-2 rounded-xl bg-oatmeal/60 border border-stone text-xs text-espresso focus:outline-none focus:border-terracotta">
+                        ${AppState.playlists.map(p => `
+                            <option value="${p.id}" ${p.id === (selectedPl ? selectedPl.id : '') ? 'selected' : ''}>
+                                ${escapeHtml(p.name)} (${p.trackIds.length} songs)
+                            </option>
+                        `).join('')}
+                    </select>
+                </div>
+
+                <!-- URL input -->
+                <div>
+                    <label class="block font-mono text-[11px] uppercase text-muted mb-1">YouTube / YouTube Music URL</label>
+                    <div class="flex gap-2">
+                        <input 
+                            id="input-yt-url" 
+                            type="text" 
+                            placeholder="https://www.youtube.com/watch?v=... or youtu.be" 
+                            class="flex-1 px-3.5 py-2 rounded-xl bg-oatmeal/60 border border-stone text-xs text-espresso focus:outline-none focus:border-terracotta"
+                            autocomplete="off"
+                            spellcheck="false"
+                        />
+                        <button type="button" id="btn-fetch-yt-info" class="px-3.5 py-2 rounded-xl bg-stone/60 hover:bg-stone text-espresso text-xs font-mono font-medium transition active:scale-95 shrink-0">
+                            Fetch Info
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Info Loading Indicator -->
+                <div id="yt-loading-card" class="hidden items-center justify-center gap-2 py-6 px-4 rounded-2xl bg-oatmeal/40 border border-stone/60 text-xs font-mono text-muted">
+                    <span class="w-2.5 h-2.5 rounded-full bg-terracotta animate-bounce"></span>
+                    <span>Fetching metadata from YouTube...</span>
+                </div>
+
+                <!-- Preview Card -->
+                <div id="yt-preview-card" class="hidden p-3.5 rounded-2xl bg-alabaster border border-stone/80 gap-3.5 shadow-sm items-center">
+                    <div id="yt-thumb-box" class="w-16 h-16 rounded-xl bg-espresso border border-stone overflow-hidden shrink-0 flex items-center justify-center">
+                        <img id="yt-thumb-img" src="" class="w-full h-full object-cover">
+                    </div>
+                    <div class="min-w-0 flex-1 space-y-1.5">
+                        <div>
+                            <label class="block font-mono text-[9px] uppercase text-muted">Song Title</label>
+                            <input id="input-yt-title" type="text" class="w-full px-2.5 py-1 rounded-lg bg-oatmeal/60 border border-stone/70 text-xs font-medium text-espresso focus:outline-none focus:border-terracotta">
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="flex-1">
+                                <label class="block font-mono text-[9px] uppercase text-muted">Artist</label>
+                                <input id="input-yt-artist" type="text" class="w-full px-2.5 py-1 rounded-lg bg-oatmeal/60 border border-stone/70 text-xs text-espresso focus:outline-none focus:border-terracotta">
+                            </div>
+                            <div class="shrink-0 text-right">
+                                <label class="block font-mono text-[9px] uppercase text-muted">Duration</label>
+                                <span id="yt-duration-badge" class="font-mono text-xs text-espresso">00:00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Real-time Progress Bar -->
+                <div id="yt-progress-box" class="hidden p-4 rounded-2xl bg-oatmeal/60 border border-stone space-y-2">
+                    <div class="flex items-center justify-between text-xs font-mono">
+                        <span id="yt-progress-stage" class="text-espresso font-medium flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-terracotta animate-pulse"></span>
+                            <span>Downloading audio...</span>
+                        </span>
+                        <span id="yt-progress-percent" class="text-terracotta font-semibold">0%</span>
+                    </div>
+                    <div class="w-full h-2 bg-stone/70 rounded-full overflow-hidden">
+                        <div id="yt-progress-bar" class="h-full bg-terracotta transition-all duration-150 rounded-full" style="width: 0%;"></div>
+                    </div>
+                    <p id="yt-progress-detail" class="font-mono text-[10px] text-muted truncate"></p>
+                </div>
+
+                <!-- Error Container -->
+                <div id="yt-error-box" class="hidden p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-600 text-xs font-mono break-words leading-relaxed"></div>
+
+                <!-- Action Buttons -->
+                <div class="pt-2 flex justify-end gap-2" id="yt-actions">
+                    <button type="button" id="btn-cancel-yt" class="px-4 py-2 rounded-xl text-xs font-medium text-muted hover:bg-oatmeal transition">
+                        Cancel
+                    </button>
+                    <button type="button" id="btn-submit-yt" class="cursor-pointer inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-terracotta text-alabaster hover:bg-[#b04b25] text-xs font-medium transition shadow-sm active:scale-95 disabled:opacity-50 disabled:pointer-events-none">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 18h16"/>
+                        </svg>
+                        <span id="btn-submit-yt-label">Import Audio</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `);
+
+    const modalBody = document.getElementById('modal-body');
+    const checkingEl = modalBody.querySelector('#yt-checking-tools');
+    const contentEl = modalBody.querySelector('#yt-content-wrapper');
+
+    let tools = { hasYtdlp: false, hasFfmpeg: false };
+    try {
+        tools = await window.spindleDesktop.checkTools();
+    } catch (_) {}
+
+    if (!tools.hasYtdlp || !tools.hasFfmpeg) {
+        checkingEl.innerHTML = `
+            <div class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-espresso space-y-2 w-full">
+                <h4 class="font-medium text-sm text-amber-800">Prerequisites Required</h4>
+                <p class="text-xs text-muted leading-relaxed">
+                    YouTube audio extraction requires <code>yt-dlp</code> and <code>ffmpeg</code> installed on your system.
+                </p>
+                <div class="p-2.5 rounded-xl bg-alabaster border border-stone font-mono text-[11px] select-all">
+                    sudo apt update &amp;&amp; sudo apt install -y ffmpeg yt-dlp
+                </div>
+                <div class="pt-2 flex justify-end">
+                    <button type="button" id="btn-close-tools" class="px-4 py-1.5 rounded-xl bg-stone/70 hover:bg-stone text-espresso text-xs font-medium">Close</button>
+                </div>
+            </div>
+        `;
+        checkingEl.querySelector('#btn-close-tools')?.addEventListener('click', closeModal);
+        return;
+    }
+
+    checkingEl.classList.add('hidden');
+    contentEl.classList.remove('hidden');
+
+    const selectPl = modalBody.querySelector('#select-yt-playlist');
+    const urlInput = modalBody.querySelector('#input-yt-url');
+    const fetchBtn = modalBody.querySelector('#btn-fetch-yt-info');
+    const loadingCard = modalBody.querySelector('#yt-loading-card');
+    const previewCard = modalBody.querySelector('#yt-preview-card');
+    const thumbImg = modalBody.querySelector('#yt-thumb-img');
+    const titleInput = modalBody.querySelector('#input-yt-title');
+    const artistInput = modalBody.querySelector('#input-yt-artist');
+    const durationBadge = modalBody.querySelector('#yt-duration-badge');
+    const progressBox = modalBody.querySelector('#yt-progress-box');
+    const progressBar = modalBody.querySelector('#yt-progress-bar');
+    const progressStage = modalBody.querySelector('#yt-progress-stage');
+    const progressPercent = modalBody.querySelector('#yt-progress-percent');
+    const progressDetail = modalBody.querySelector('#yt-progress-detail');
+    const errorBox = modalBody.querySelector('#yt-error-box');
+    const cancelBtn = modalBody.querySelector('#btn-cancel-yt');
+    const submitBtn = modalBody.querySelector('#btn-submit-yt');
+    const submitLabel = modalBody.querySelector('#btn-submit-yt-label');
+
+    urlInput.focus();
+
+    let fetchedMetadata = null;
+    let isFetching = false;
+    let isDownloading = false;
+
+    async function fetchInfo() {
+        const url = urlInput.value.trim();
+        if (!url || isFetching || isDownloading) return;
+
+        errorBox.classList.add('hidden');
+        errorBox.textContent = '';
+        isFetching = true;
+        fetchBtn.disabled = true;
+        loadingCard.classList.remove('hidden');
+        loadingCard.classList.add('flex');
+        previewCard.classList.add('hidden');
+        previewCard.classList.remove('flex');
+
+        try {
+            const data = await window.spindleDesktop.getYoutubeInfo(url);
+            fetchedMetadata = data;
+            titleInput.value = data.title || '';
+            artistInput.value = data.artist || '';
+            durationBadge.textContent = formatTime(data.duration || 0);
+
+            if (data.thumbnail) {
+                thumbImg.src = data.thumbnail;
+                thumbImg.classList.remove('hidden');
+            } else {
+                thumbImg.classList.add('hidden');
+            }
+
+            loadingCard.classList.add('hidden');
+            loadingCard.classList.remove('flex');
+            previewCard.classList.remove('hidden');
+            previewCard.classList.add('flex');
+            submitLabel.textContent = 'Import & Play';
+        } catch (err) {
+            loadingCard.classList.add('hidden');
+            loadingCard.classList.remove('flex');
+            errorBox.textContent = `Could not fetch video info: ${err.message || err}`;
+            errorBox.classList.remove('hidden');
+        } finally {
+            isFetching = false;
+            fetchBtn.disabled = false;
+        }
+    }
+
+    fetchBtn.addEventListener('click', fetchInfo);
+
+    urlInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (!fetchedMetadata) {
+                fetchInfo();
+            } else {
+                startDownload();
+            }
+        }
+    });
+
+    urlInput.addEventListener('paste', () => {
+        setTimeout(fetchInfo, 100);
+    });
+
+    cancelBtn.addEventListener('click', closeModal);
+
+    async function startDownload() {
+        const url = urlInput.value.trim();
+        if (!url || isDownloading) return;
+
+        const targetPl = AppState.playlists.find(p => p.id === selectPl.value) || AppState.playlists[0];
+        if (!targetPl) return;
+
+        isDownloading = true;
+        urlInput.disabled = true;
+        fetchBtn.disabled = true;
+        selectPl.disabled = true;
+        cancelBtn.disabled = true;
+        submitBtn.disabled = true;
+        errorBox.classList.add('hidden');
+
+        progressBox.classList.remove('hidden');
+        progressBar.style.width = '0%';
+        progressPercent.textContent = '0%';
+        progressStage.innerHTML = `<span class="w-2 h-2 rounded-full bg-terracotta animate-pulse"></span><span>Starting download...</span>`;
+        progressDetail.textContent = 'Connecting to stream servers...';
+
+        const unsubscribe = window.spindleDesktop.onDownloadProgress((prog) => {
+            if (prog.percent !== undefined) {
+                const pct = Math.round(prog.percent);
+                progressBar.style.width = `${pct}%`;
+                progressPercent.textContent = `${pct}%`;
+            }
+            if (prog.message) {
+                progressStage.innerHTML = `<span class="w-2 h-2 rounded-full bg-terracotta animate-pulse"></span><span>${escapeHtml(prog.message)}</span>`;
+            }
+            if (prog.speed && prog.eta) {
+                progressDetail.textContent = `Speed: ${prog.speed} • ETA: ${prog.eta} • Total: ${prog.size || ''}`;
+            }
+        });
+
+        try {
+            const customTitle = titleInput.value.trim() || (fetchedMetadata && fetchedMetadata.title) || null;
+            const customArtist = artistInput.value.trim() || (fetchedMetadata && fetchedMetadata.artist) || null;
+
+            const res = await window.spindleDesktop.downloadYoutubeTrack({
+                url,
+                playlistName: targetPl.name,
+                customTitle,
+                customArtist,
+                thumbnail: fetchedMetadata ? fetchedMetadata.thumbnail : null,
+                duration: fetchedMetadata ? fetchedMetadata.duration : null
+            });
+
+            if (!res || !res.success) {
+                throw new Error('Download did not return success.');
+            }
+
+            unsubscribe();
+
+            // Track creation
+            const id = `yt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+            const palette = VINYL_COLORS[Object.keys(AppState.tracksById).length % VINYL_COLORS.length];
+            const newTrack = {
+                id,
+                title: res.title || customTitle || 'Track',
+                artist: res.artist || customArtist || 'Unknown Artist',
+                duration: res.duration || 180,
+                isSynth: false,
+                url: res.url,
+                filePath: res.filePath,
+                artwork: res.thumbnail || null,
+                labelColor: palette.label,
+                accentColor: palette.accent
+            };
+
+            AppState.tracksById[id] = newTrack;
+            const insertIndex = targetPl.trackIds.length;
+            targetPl.trackIds.push(id);
+            await persistState();
+
+            closeModal();
+            openPlaylist(targetPl.id);
+            AppState.playingPlaylistId = targetPl.id;
+            selectAndPlayTrack(insertIndex);
+
+        } catch (err) {
+            unsubscribe();
+            isDownloading = false;
+            urlInput.disabled = false;
+            fetchBtn.disabled = false;
+            selectPl.disabled = false;
+            cancelBtn.disabled = false;
+            submitBtn.disabled = false;
+            progressBox.classList.add('hidden');
+            errorBox.textContent = `Import failed: ${err.message || err}`;
+            errorBox.classList.remove('hidden');
+        }
+    }
+
+    submitBtn.addEventListener('click', () => {
+        if (!fetchedMetadata && urlInput.value.trim()) {
+            fetchInfo().then(() => {
+                if (fetchedMetadata) startDownload();
+            });
+        } else {
+            startDownload();
+        }
     });
 }
 
