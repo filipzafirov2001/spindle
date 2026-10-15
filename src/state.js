@@ -21,7 +21,8 @@ export const AppState = {
     isDarkMode: false,
     isSeeking: false,
     artworkUploadCallback: null,
-    pendingAddSongsPlaylistId: null
+    pendingAddSongsPlaylistId: null,
+    searchQuery: ''
 };
 
 export function getPlayingPlaylist() {

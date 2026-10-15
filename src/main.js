@@ -154,6 +154,73 @@ async function initApp() {
 
     window.addEventListener('click', () => closeContextMenu());
 
+    // Search playlists & songs input
+    const searchInput = document.getElementById('search-input');
+    const searchClearBtn = document.getElementById('btn-search-clear');
+
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            AppState.searchQuery = e.target.value;
+            if (searchClearBtn) {
+                if (AppState.searchQuery.trim().length > 0) {
+                    searchClearBtn.classList.remove('hidden');
+                } else {
+                    searchClearBtn.classList.add('hidden');
+                }
+            }
+            renderSidebarView();
+        });
+
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (searchInput.value) {
+                    searchInput.value = '';
+                    AppState.searchQuery = '';
+                    if (searchClearBtn) searchClearBtn.classList.add('hidden');
+                    renderSidebarView();
+                }
+                searchInput.blur();
+            }
+        });
+    }
+
+    if (searchClearBtn) {
+        searchClearBtn.addEventListener('click', () => {
+            if (searchInput) {
+                searchInput.value = '';
+                searchInput.focus();
+            }
+            AppState.searchQuery = '';
+            searchClearBtn.classList.add('hidden');
+            renderSidebarView();
+        });
+    }
+
+    // Global Space bar shortcut to toggle play/pause on currently playing track
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.key === ' ') {
+            if (isIntroActive) return; // onIntroKey handles intro transition
+
+            const activeEl = document.activeElement;
+            const tagName = activeEl ? activeEl.tagName.toUpperCase() : '';
+            if (tagName === 'INPUT' || tagName === 'TEXTAREA' || activeEl?.isContentEditable) {
+                return; // Let user type spaces into text boxes
+            }
+
+            e.preventDefault(); // Stop native button activation and scrolling
+            togglePlayPause();
+        }
+    });
+
+    // Unfocus buttons on click so pressing space doesn't activate what was clicked last
+    document.addEventListener('pointerup', (e) => {
+        if (e.target.closest('button')) {
+            if (document.activeElement && document.activeElement.tagName === 'BUTTON') {
+                document.activeElement.blur();
+            }
+        }
+    });
+
     // Compact Left-to-Right Light / Dark Theme Toggle
     document.getElementById('btn-theme-toggle').addEventListener('click', () => {
         AppState.isDarkMode = !AppState.isDarkMode;

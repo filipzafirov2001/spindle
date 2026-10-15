@@ -47,9 +47,13 @@ export function updatePlayerUI() {
     if (!AppState.hasActiveSession || !track) {
         nowPlayingSection.classList.add('hidden');
         nowPlayingSection.classList.remove('flex');
-        stateBadge.textContent = 'Stopped';
-        stateBadge.className = 'font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-oatmeal text-muted border border-stone uppercase tracking-wider';
-        statusLed.className = 'w-2.5 h-2.5 rounded-full bg-stone shadow-sm';
+        if (stateBadge) {
+            stateBadge.textContent = 'Stopped';
+            stateBadge.className = 'font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-oatmeal text-muted border border-stone uppercase tracking-wider';
+        }
+        if (statusLed) {
+            statusLed.className = 'w-2.5 h-2.5 rounded-full bg-stone shadow-sm';
+        }
         return;
     }
 
@@ -76,21 +80,33 @@ export function updatePlayerUI() {
     if (AppState.playbackState === 'PLAYING') {
         iconPlay.classList.add('hidden');
         iconPause.classList.remove('hidden');
-        stateBadge.textContent = 'Playing';
-        stateBadge.className = 'font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-terracotta/15 text-terracotta border border-terracotta/30 uppercase tracking-wider';
-        statusLed.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm animate-pulse';
+        if (stateBadge) {
+            stateBadge.textContent = 'Playing';
+            stateBadge.className = 'font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-terracotta/15 text-terracotta border border-terracotta/30 uppercase tracking-wider';
+        }
+        if (statusLed) {
+            statusLed.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm animate-pulse';
+        }
     } else if (AppState.playbackState === 'PAUSED') {
         iconPlay.classList.remove('hidden');
         iconPause.classList.add('hidden');
-        stateBadge.textContent = 'Paused';
-        stateBadge.className = 'font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30 uppercase tracking-wider';
-        statusLed.className = 'w-2.5 h-2.5 rounded-full bg-amber-500 shadow-sm';
+        if (stateBadge) {
+            stateBadge.textContent = 'Paused';
+            stateBadge.className = 'font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30 uppercase tracking-wider';
+        }
+        if (statusLed) {
+            statusLed.className = 'w-2.5 h-2.5 rounded-full bg-amber-500 shadow-sm';
+        }
     } else {
         iconPlay.classList.remove('hidden');
         iconPause.classList.add('hidden');
-        stateBadge.textContent = 'Stopped';
-        stateBadge.className = 'font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-oatmeal text-muted border border-stone uppercase tracking-wider';
-        statusLed.className = 'w-2.5 h-2.5 rounded-full bg-terracotta shadow-sm';
+        if (stateBadge) {
+            stateBadge.textContent = 'Stopped';
+            stateBadge.className = 'font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-oatmeal text-muted border border-stone uppercase tracking-wider';
+        }
+        if (statusLed) {
+            statusLed.className = 'w-2.5 h-2.5 rounded-full bg-terracotta shadow-sm';
+        }
     }
 
     const pct = AppState.duration > 0 ? (AppState.currentTime / AppState.duration) * 100 : 0;
@@ -169,72 +185,191 @@ export function renderSidebarView() {
     }
 }
 
+export function createPlaylistRow(pl) {
+    const isSelected = AppState.hasActiveSession && pl.id === AppState.playingPlaylistId;
+    const isPlaying = isSelected && AppState.playbackState === 'PLAYING';
+
+    const row = document.createElement('div');
+    row.className = `group flex items-center justify-between px-3.5 py-2.5 rounded-2xl cursor-pointer transition-all border ${
+        isSelected
+            ? 'bg-alabaster border-stone shadow-sm'
+            : 'bg-transparent border-transparent hover:bg-alabaster/60 hover:border-stone/40'
+    }`;
+
+    const artworkHtml = pl.artwork
+        ? `<div class="w-10 h-10 rounded-xl overflow-hidden shrink-0 relative border border-stone">
+            <img src="${pl.artwork}" class="w-full h-full object-cover" alt="">
+           </div>`
+        : `<div class="w-10 h-10 rounded-xl bg-espresso flex items-center justify-center shrink-0 relative border border-stone">
+            <div class="w-7 h-7 rounded-full flex items-center justify-center" style="background: radial-gradient(circle, ${pl.color || '#C85A32'} 0%, ${pl.color || '#C85A32'} 35%, #1E1B18 38%, #1E1B18 100%);">
+                ${
+                    isPlaying
+                        ? `<div class="flex items-end gap-0.5 h-3">
+                            <span class="w-0.5 bg-alabaster eq-bar-1"></span>
+                            <span class="w-0.5 bg-alabaster eq-bar-2"></span>
+                            <span class="w-0.5 bg-alabaster eq-bar-3"></span>
+                           </div>`
+                        : `<div class="w-1.5 h-1.5 rounded-full bg-alabaster"></div>`
+                }
+            </div>
+           </div>`;
+
+    row.innerHTML = `
+        <div class="flex items-center gap-3.5 min-w-0 flex-1">
+            ${artworkHtml}
+            <div class="flex flex-col min-w-0 flex-1">
+                <span class="text-sm font-medium ${isSelected ? 'text-terracotta font-semibold' : 'text-espresso'} truncate">
+                    ${escapeHtml(pl.name)}
+                </span>
+                <span class="text-xs text-muted truncate">${pl.trackIds.length} ${pl.trackIds.length === 1 ? 'song' : 'songs'}</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0 ml-2">
+            <span class="font-mono text-xs text-muted">${formatTotalDuration(pl.trackIds)}</span>
+            <button class="btn-pl-menu p-1.5 rounded-xl text-muted hover:text-espresso hover:bg-oatmeal transition" title="Playlist Options">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+                </svg>
+            </button>
+        </div>
+    `;
+
+    row.addEventListener('click', (e) => {
+        if (e.target.closest('.btn-pl-menu')) return;
+        openPlaylist(pl.id);
+    });
+
+    row.querySelector('.btn-pl-menu').addEventListener('click', (e) => {
+        e.stopPropagation();
+        openPlaylistContextMenu(e.currentTarget, pl);
+    });
+
+    return row;
+}
+
+export function createSearchResultTrackRow(pl, track, idx) {
+    const isSelected = AppState.hasActiveSession && (pl.id === AppState.playingPlaylistId && idx === AppState.currentIndex);
+    const isPlaying = isSelected && AppState.playbackState === 'PLAYING';
+
+    const row = document.createElement('div');
+    row.className = `group flex items-center justify-between px-3.5 py-2.5 rounded-2xl cursor-pointer transition-all border ${
+        isSelected
+            ? 'bg-alabaster border-stone shadow-sm'
+            : 'bg-transparent border-transparent hover:bg-alabaster/60 hover:border-stone/40'
+    }`;
+
+    row.innerHTML = `
+        <div class="flex items-center gap-3.5 min-w-0 flex-1">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 relative" style="background: radial-gradient(circle, ${track.labelColor} 0%, ${track.labelColor} 35%, #1E1B18 38%, #1E1B18 100%);">
+                ${
+                    isPlaying
+                        ? `<div class="flex items-end gap-0.5 h-3.5">
+                            <span class="w-0.5 bg-alabaster eq-bar-1"></span>
+                            <span class="w-0.5 bg-alabaster eq-bar-2"></span>
+                            <span class="w-0.5 bg-alabaster eq-bar-3"></span>
+                           </div>`
+                        : `<div class="w-1.5 h-1.5 rounded-full bg-alabaster"></div>`
+                }
+            </div>
+
+            <div class="flex flex-col min-w-0 flex-1">
+                <span class="text-sm font-medium ${isSelected ? 'text-terracotta font-semibold' : 'text-espresso'} truncate">
+                    ${escapeHtml(track.title)}
+                </span>
+                <span class="text-xs text-muted truncate">
+                    ${escapeHtml(track.artist)} • <span class="text-espresso/70">${escapeHtml(pl.name)}</span>
+                </span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0 ml-2">
+            <span class="font-mono text-xs text-muted">${formatTime(track.duration)}</span>
+        </div>
+    `;
+
+    row.addEventListener('click', () => {
+        AppState.playingPlaylistId = pl.id;
+        AppState.viewedPlaylistId = pl.id;
+        AppState.uiView = 'PLAYLIST_DETAIL';
+        renderSidebarView();
+        selectAndPlayTrack(idx);
+    });
+
+    return row;
+}
+
 export function renderPlaylistsOverviewList() {
     const container = document.getElementById('playlist-container');
     container.innerHTML = '';
 
-    AppState.playlists.forEach((pl) => {
-        const isSelected = AppState.hasActiveSession && pl.id === AppState.playingPlaylistId;
-        const isPlaying = isSelected && AppState.playbackState === 'PLAYING';
+    const query = (AppState.searchQuery || '').trim().toLowerCase();
 
-        const row = document.createElement('div');
-        row.className = `group flex items-center justify-between px-3.5 py-2.5 rounded-2xl cursor-pointer transition-all border ${
-            isSelected
-                ? 'bg-alabaster border-stone shadow-sm'
-                : 'bg-transparent border-transparent hover:bg-alabaster/60 hover:border-stone/40'
-        }`;
+    // Normal overview (no search active)
+    if (!query) {
+        AppState.playlists.forEach((pl) => {
+            container.appendChild(createPlaylistRow(pl));
+        });
+        return;
+    }
 
-        const artworkHtml = pl.artwork
-            ? `<div class="w-10 h-10 rounded-xl overflow-hidden shrink-0 relative border border-stone">
-                <img src="${pl.artwork}" class="w-full h-full object-cover" alt="">
-               </div>`
-            : `<div class="w-10 h-10 rounded-xl bg-espresso flex items-center justify-center shrink-0 relative border border-stone">
-                <div class="w-7 h-7 rounded-full flex items-center justify-center" style="background: radial-gradient(circle, ${pl.color || '#C85A32'} 0%, ${pl.color || '#C85A32'} 35%, #1E1B18 38%, #1E1B18 100%);">
-                    ${
-                        isPlaying
-                            ? `<div class="flex items-end gap-0.5 h-3">
-                                <span class="w-0.5 bg-alabaster eq-bar-1"></span>
-                                <span class="w-0.5 bg-alabaster eq-bar-2"></span>
-                                <span class="w-0.5 bg-alabaster eq-bar-3"></span>
-                               </div>`
-                            : `<div class="w-1.5 h-1.5 rounded-full bg-alabaster"></div>`
-                    }
-                </div>
-               </div>`;
+    // Searching: filter matching playlists
+    const matchingPlaylists = AppState.playlists.filter(pl => {
+        if (pl.name.toLowerCase().includes(query)) return true;
+        return pl.trackIds.some(tid => {
+            const t = AppState.tracksById[tid];
+            return t && (t.title.toLowerCase().includes(query) || t.artist.toLowerCase().includes(query));
+        });
+    });
 
-        row.innerHTML = `
-            <div class="flex items-center gap-3.5 min-w-0 flex-1">
-                ${artworkHtml}
-                <div class="flex flex-col min-w-0 flex-1">
-                    <span class="text-sm font-medium ${isSelected ? 'text-terracotta font-semibold' : 'text-espresso'} truncate">
-                        ${escapeHtml(pl.name)}
-                    </span>
-                    <span class="text-xs text-muted truncate">${pl.trackIds.length} ${pl.trackIds.length === 1 ? 'song' : 'songs'}</span>
-                </div>
-            </div>
+    // Find all matching songs across playlists
+    const matchingSongs = [];
+    const seenSongs = new Set();
+    AppState.playlists.forEach(pl => {
+        pl.trackIds.forEach((tid, idx) => {
+            const track = AppState.tracksById[tid];
+            if (!track) return;
+            if (track.title.toLowerCase().includes(query) || track.artist.toLowerCase().includes(query)) {
+                const key = `${pl.id}-${tid}-${idx}`;
+                if (!seenSongs.has(key)) {
+                    seenSongs.add(key);
+                    matchingSongs.push({ pl, track, idx });
+                }
+            }
+        });
+    });
 
-            <div class="flex items-center gap-2 shrink-0 ml-2">
-                <span class="font-mono text-xs text-muted">${formatTotalDuration(pl.trackIds)}</span>
-                <button class="btn-pl-menu p-1.5 rounded-xl text-muted hover:text-espresso hover:bg-oatmeal transition" title="Playlist Options">
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                        <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
-                    </svg>
-                </button>
+    if (matchingPlaylists.length === 0 && matchingSongs.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-10 px-4">
+                <p class="text-sm font-medium text-espresso">No matches found</p>
+                <p class="text-xs text-muted mt-1">No playlists or songs matching "${escapeHtml(AppState.searchQuery)}"</p>
             </div>
         `;
+        return;
+    }
 
-        row.addEventListener('click', (e) => {
-            if (e.target.closest('.btn-pl-menu')) return;
-            openPlaylist(pl.id);
+    if (matchingPlaylists.length > 0) {
+        const header = document.createElement('div');
+        header.className = 'px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider text-muted font-medium';
+        header.textContent = `Playlists (${matchingPlaylists.length})`;
+        container.appendChild(header);
+
+        matchingPlaylists.forEach(pl => {
+            container.appendChild(createPlaylistRow(pl));
         });
+    }
 
-        row.querySelector('.btn-pl-menu').addEventListener('click', (e) => {
-            e.stopPropagation();
-            openPlaylistContextMenu(e.currentTarget, pl);
+    if (matchingSongs.length > 0) {
+        const header = document.createElement('div');
+        header.className = 'px-3 pt-3 pb-1.5 text-[11px] font-mono uppercase tracking-wider text-muted font-medium';
+        header.textContent = `Songs (${matchingSongs.length})`;
+        container.appendChild(header);
+
+        matchingSongs.forEach(({ pl, track, idx }) => {
+            container.appendChild(createSearchResultTrackRow(pl, track, idx));
         });
-
-        container.appendChild(row);
-    });
+    }
 }
 
 export function openPlaylist(playlistId) {
@@ -252,6 +387,8 @@ export function renderOpenedPlaylistTracks(pl) {
     const container = document.getElementById('playlist-container');
     container.innerHTML = '';
 
+    const query = (AppState.searchQuery || '').trim().toLowerCase();
+
     if (pl.trackIds.length === 0) {
         container.innerHTML = `
             <div class="text-center py-8 px-4">
@@ -262,18 +399,58 @@ export function renderOpenedPlaylistTracks(pl) {
         return;
     }
 
-    pl.trackIds.forEach((trackId, idx) => {
-        const track = AppState.tracksById[trackId];
-        if (!track) return;
+    const allEntries = pl.trackIds
+        .map((trackId, idx) => ({ trackId, idx, track: AppState.tracksById[trackId] }))
+        .filter(item => item.track);
 
+    const filteredEntries = query
+        ? allEntries.filter(({ track }) => {
+            return track.title.toLowerCase().includes(query) || track.artist.toLowerCase().includes(query);
+        })
+        : allEntries;
+
+    if (query && filteredEntries.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-8 px-4">
+                <p class="text-sm font-medium text-espresso">No matching songs in "${escapeHtml(pl.name)}"</p>
+                <p class="text-xs text-muted mt-1">No songs matching "${escapeHtml(AppState.searchQuery)}"</p>
+                <button id="btn-search-all-pl" class="mt-3.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-stone bg-oatmeal/70 hover:bg-oatmeal text-xs font-medium text-espresso transition active:scale-95">
+                    Search all playlists & songs
+                </button>
+            </div>
+        `;
+        container.querySelector('#btn-search-all-pl')?.addEventListener('click', () => {
+            AppState.uiView = 'PLAYLISTS';
+            renderSidebarView();
+        });
+        return;
+    }
+
+    if (query && filteredEntries.length > 0) {
+        const searchHeader = document.createElement('div');
+        searchHeader.className = 'flex items-center justify-between px-3 pb-2 text-[11px] font-mono text-muted';
+        searchHeader.innerHTML = `
+            <span>Showing ${filteredEntries.length} of ${allEntries.length} songs</span>
+            <button id="btn-search-all-link" class="hover:text-espresso underline">Search all</button>
+        `;
+        searchHeader.querySelector('#btn-search-all-link')?.addEventListener('click', () => {
+            AppState.uiView = 'PLAYLISTS';
+            renderSidebarView();
+        });
+        container.appendChild(searchHeader);
+    }
+
+    const isReorderActive = AppState.isReorderMode && !query;
+
+    filteredEntries.forEach(({ track, idx }) => {
         const isSelected = AppState.hasActiveSession && (pl.id === AppState.playingPlaylistId && idx === AppState.currentIndex);
         const isPlaying = isSelected && AppState.playbackState === 'PLAYING';
 
         const row = document.createElement('div');
         row.dataset.index = idx;
-        row.draggable = AppState.isReorderMode;
+        row.draggable = isReorderActive;
         row.className = `group flex items-center justify-between px-3.5 py-2.5 rounded-2xl cursor-pointer transition-all border ${
-            AppState.isReorderMode
+            isReorderActive
                 ? 'bg-alabaster/90 border-stone border-dashed cursor-move hover:border-terracotta'
                 : isSelected
                     ? 'bg-alabaster border-stone shadow-sm'
@@ -283,7 +460,7 @@ export function renderOpenedPlaylistTracks(pl) {
         row.innerHTML = `
             <div class="flex items-center gap-3.5 min-w-0 flex-1">
                 ${
-                    AppState.isReorderMode
+                    isReorderActive
                         ? `<div class="text-muted hover:text-espresso cursor-grab active:cursor-grabbing" title="Drag to reorder">
                             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                                 <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
@@ -316,7 +493,7 @@ export function renderOpenedPlaylistTracks(pl) {
 
             <div class="flex items-center gap-2 shrink-0 ml-2">
                 ${
-                    AppState.isReorderMode
+                    isReorderActive
                         ? `
                         <button class="btn-move-up p-1 rounded-lg bg-oatmeal hover:bg-stone text-espresso disabled:opacity-30 transition" ${idx === 0 ? 'disabled' : ''} title="Move Up">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
@@ -341,7 +518,7 @@ export function renderOpenedPlaylistTracks(pl) {
             </div>
         `;
 
-        if (AppState.isReorderMode) {
+        if (isReorderActive) {
             const upBtn = row.querySelector('.btn-move-up');
             const downBtn = row.querySelector('.btn-move-down');
             if (upBtn) {
@@ -405,7 +582,7 @@ export function renderOpenedPlaylistTracks(pl) {
                 selectAndPlayTrack(idx);
             });
 
-            row.querySelector('.btn-song-menu').addEventListener('click', (e) => {
+            row.querySelector('.btn-song-menu')?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 openSongContextMenu(e.currentTarget, pl, track, idx);
             });
@@ -972,7 +1149,15 @@ export function selectAndPlayTrack(index) {
 }
 
 export function togglePlayPause() {
-    const track = getCurrentTrack();
+    let track = getCurrentTrack();
+    if (!track) {
+        const pl = getViewedPlaylist() || AppState.playlists[0];
+        if (pl && pl.trackIds.length > 0) {
+            AppState.playingPlaylistId = pl.id;
+            AppState.currentIndex = 0;
+            track = getCurrentTrack();
+        }
+    }
     if (!track) return;
 
     AppState.hasActiveSession = true;

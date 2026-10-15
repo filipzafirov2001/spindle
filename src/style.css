@@ -3,6 +3,10 @@
     user-select: none;
     -webkit-user-select: none;
 }
+input, textarea {
+    user-select: text;
+    -webkit-user-select: text;
+}
 body {
     background-color: #F6F4F0;
     color: #1E1B18;
@@ -175,4 +179,17 @@ body.dark-theme ::-webkit-scrollbar-thumb {
 
 body.dark-theme #intro-prompt p {
     color: rgba(221, 215, 206, 0.65) !important;
+}
+
+body.dark-theme #search-input {
+    background-color: #2B2723 !important;
+    border-color: #38332E !important;
+    color: #DDD7CE !important;
+}
+body.dark-theme #search-input:focus {
+    background-color: #23201D !important;
+    border-color: #C85A32 !important;
+}
+body.dark-theme #hud-bottom-hint {
+    color: rgba(154, 146, 136, 0.45) !important;
 }
