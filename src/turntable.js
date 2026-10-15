@@ -100,7 +100,6 @@ export class Turntable3D {
 
         const tex = new THREE.CanvasTexture(canvas);
         tex.mapping = THREE.EquirectangularReflectionMapping;
-        tex.encoding = THREE.sRGBEncoding;
 
         if (this.renderer) {
             const pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -174,7 +173,6 @@ export class Turntable3D {
         tex.wrapS = THREE.RepeatWrapping;
         tex.wrapT = THREE.RepeatWrapping;
         tex.anisotropy = 8;
-        tex.encoding = THREE.sRGBEncoding;
         return tex;
     }
 
@@ -203,7 +201,6 @@ export class Turntable3D {
         tex.wrapS = THREE.RepeatWrapping;
         tex.wrapT = THREE.RepeatWrapping;
         tex.anisotropy = 4;
-        tex.encoding = THREE.sRGBEncoding;
         return tex;
     }
 
@@ -260,7 +257,6 @@ export class Turntable3D {
 
         const tex = new THREE.CanvasTexture(canvas);
         tex.wrapS = THREE.RepeatWrapping;
-        tex.encoding = THREE.sRGBEncoding;
         return tex;
     }
 
@@ -309,7 +305,6 @@ export class Turntable3D {
 
         const tex = new THREE.CanvasTexture(canvas);
         tex.anisotropy = 4;
-        tex.encoding = THREE.sRGBEncoding;
         return tex;
     }
 
@@ -337,7 +332,6 @@ export class Turntable3D {
         ctx.fillText('DIRECT DRIVE TURNTABLE SYSTEM', 256, 76);
 
         const tex = new THREE.CanvasTexture(canvas);
-        tex.encoding = THREE.sRGBEncoding;
         return tex;
     }
 
@@ -350,20 +344,20 @@ export class Turntable3D {
         const cx = 512, cy = 512;
 
         // Base vinyl tone: deep charcoal/carbon black with subtle warmth
-        ctx.fillStyle = '#0E0D0C';
+        ctx.fillStyle = '#141312';
         ctx.fillRect(0, 0, 1024, 1024);
 
         // 1. Primary vinyl anisotropic reflection lobes (butterfly/bow-tie light sheen)
         const grad1 = ctx.createConicGradient(0.78, cx, cy);
         grad1.addColorStop(0.00, 'rgba(255, 255, 255, 0.0)');
-        grad1.addColorStop(0.09, 'rgba(255, 255, 255, 0.12)');
-        grad1.addColorStop(0.125, 'rgba(255, 255, 255, 0.25)');
-        grad1.addColorStop(0.16, 'rgba(255, 255, 255, 0.12)');
+        grad1.addColorStop(0.09, 'rgba(255, 255, 255, 0.04)');
+        grad1.addColorStop(0.125, 'rgba(255, 255, 255, 0.08)');
+        grad1.addColorStop(0.16, 'rgba(255, 255, 255, 0.04)');
         grad1.addColorStop(0.25, 'rgba(255, 255, 255, 0.0)');
         grad1.addColorStop(0.50, 'rgba(255, 255, 255, 0.0)');
-        grad1.addColorStop(0.59, 'rgba(255, 255, 255, 0.12)');
-        grad1.addColorStop(0.625, 'rgba(255, 255, 255, 0.25)');
-        grad1.addColorStop(0.66, 'rgba(255, 255, 255, 0.12)');
+        grad1.addColorStop(0.59, 'rgba(255, 255, 255, 0.04)');
+        grad1.addColorStop(0.625, 'rgba(255, 255, 255, 0.08)');
+        grad1.addColorStop(0.66, 'rgba(255, 255, 255, 0.04)');
         grad1.addColorStop(0.75, 'rgba(255, 255, 255, 0.0)');
         grad1.addColorStop(1.00, 'rgba(255, 255, 255, 0.0)');
         ctx.fillStyle = grad1;
@@ -372,14 +366,14 @@ export class Turntable3D {
         // 2. Secondary orthogonal cross-reflection sheen (4-point studio highlight)
         const grad2 = ctx.createConicGradient(2.35, cx, cy);
         grad2.addColorStop(0.00, 'rgba(255, 255, 255, 0.0)');
-        grad2.addColorStop(0.10, 'rgba(255, 255, 255, 0.08)');
-        grad2.addColorStop(0.125, 'rgba(255, 255, 255, 0.16)');
-        grad2.addColorStop(0.15, 'rgba(255, 255, 255, 0.08)');
+        grad2.addColorStop(0.10, 'rgba(255, 255, 255, 0.025)');
+        grad2.addColorStop(0.125, 'rgba(255, 255, 255, 0.05)');
+        grad2.addColorStop(0.15, 'rgba(255, 255, 255, 0.025)');
         grad2.addColorStop(0.25, 'rgba(255, 255, 255, 0.0)');
         grad2.addColorStop(0.50, 'rgba(255, 255, 255, 0.0)');
-        grad2.addColorStop(0.60, 'rgba(255, 255, 255, 0.08)');
-        grad2.addColorStop(0.625, 'rgba(255, 255, 255, 0.16)');
-        grad2.addColorStop(0.65, 'rgba(255, 255, 255, 0.08)');
+        grad2.addColorStop(0.60, 'rgba(255, 255, 255, 0.025)');
+        grad2.addColorStop(0.625, 'rgba(255, 255, 255, 0.05)');
+        grad2.addColorStop(0.65, 'rgba(255, 255, 255, 0.025)');
         grad2.addColorStop(0.75, 'rgba(255, 255, 255, 0.0)');
         grad2.addColorStop(1.00, 'rgba(255, 255, 255, 0.0)');
         ctx.fillStyle = grad2;
@@ -466,7 +460,6 @@ export class Turntable3D {
 
         const texture = new THREE.CanvasTexture(canvas);
         texture.anisotropy = 4;
-        texture.encoding = THREE.sRGBEncoding;
         return texture;
     }
 
@@ -829,7 +822,6 @@ export class Turntable3D {
             title: 'SPINDLE',
             artist: 'STEREO 33'
         });
-        if (vinylTex) vinylTex.encoding = THREE.sRGBEncoding;
 
         this.vinylMat = new THREE.MeshPhysicalMaterial({
             map: vinylTex,
