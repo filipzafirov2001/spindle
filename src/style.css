@@ -1,0 +1,140 @@
+* {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+}
+body {
+    background-color: #F6F4F0;
+    color: #1E1B18;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    overflow: hidden;
+    transition: background-color 0.35s ease, color 0.35s ease;
+}
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #DCD6CB;
+    border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #C85A32;
+}
+
+/* Custom Range Slider */
+input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+}
+input[type=range]::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+}
+input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 14px;
+    width: 14px;
+    border-radius: 50%;
+    background: #C85A32;
+    margin-top: -5px;
+    box-shadow: 0 2px 6px rgba(200, 90, 50, 0.4);
+    transition: transform 0.15s ease, background-color 0.15s ease;
+}
+input[type=range]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    background: #a94622;
+}
+
+/* Subtle rotating animation for mini album art */
+@keyframes slowSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+.spin-art {
+    animation: slowSpin 14s linear infinite;
+    animation-play-state: paused;
+}
+.spin-art.playing {
+    animation-play-state: running;
+}
+
+/* Soundbar equalizer animation */
+@keyframes eqBar1 { 0%, 100% { height: 4px; } 50% { height: 14px; } }
+@keyframes eqBar2 { 0%, 100% { height: 14px; } 40% { height: 5px; } 80% { height: 12px; } }
+@keyframes eqBar3 { 0%, 100% { height: 6px; } 30% { height: 15px; } 70% { height: 4px; } }
+.eq-bar-1 { animation: eqBar1 0.8s ease-in-out infinite; }
+.eq-bar-2 { animation: eqBar2 0.7s ease-in-out infinite; }
+.eq-bar-3 { animation: eqBar3 0.9s ease-in-out infinite; }
+
+.drag-over-top {
+    border-top: 2px solid #C85A32 !important;
+}
+.drag-over-bottom {
+    border-bottom: 2px solid #C85A32 !important;
+}
+
+/* Warm, Low-Contrast Dark Theme Overrides (Easy on the eyes) */
+body.dark-theme {
+    background-color: #211E1B;
+    color: #DDD7CE;
+}
+body.dark-theme .bg-alabaster {
+    background-color: #23201D !important;
+}
+body.dark-theme .bg-alabaster\/85,
+body.dark-theme .bg-alabaster\/75,
+body.dark-theme .bg-alabaster\/60,
+body.dark-theme .bg-alabaster\/90 {
+    background-color: rgba(38, 34, 30, 0.88) !important;
+}
+body.dark-theme .bg-oatmeal,
+body.dark-theme .bg-oatmeal\/70,
+body.dark-theme .bg-oatmeal\/60,
+body.dark-theme .bg-oatmeal\/50,
+body.dark-theme .bg-oatmeal\/40 {
+    background-color: #2B2723 !important;
+}
+body.dark-theme .text-espresso {
+    color: #DDD7CE !important;
+}
+body.dark-theme .text-muted {
+    color: #9A9288 !important;
+}
+body.dark-theme .border-stone,
+body.dark-theme .border-stone\/80,
+body.dark-theme .border-stone\/70,
+body.dark-theme .border-stone\/60,
+body.dark-theme .border-stone\/50,
+body.dark-theme .border-stone\/40 {
+    border-color: #38332E !important;
+}
+body.dark-theme .bg-stone,
+body.dark-theme .bg-stone\/60 {
+    background-color: #3A342F !important;
+}
+body.dark-theme .hover\:bg-oatmeal:hover {
+    background-color: #342F2A !important;
+}
+body.dark-theme .hover\:bg-alabaster\/60:hover {
+    background-color: rgba(48, 43, 38, 0.75) !important;
+}
+body.dark-theme #spindle-logo-text {
+    fill: #DDD7CE;
+}
+body.dark-theme #viewport-main {
+    background: radial-gradient(circle at center, #2E2925 0%, #231F1C 62%, #1B1815 100%) !important;
+}
+body.dark-theme #vol-fill {
+    background-color: #C8C0B6 !important;
+}
+body.dark-theme ::-webkit-scrollbar-thumb {
+    background: #423B35;
+}
