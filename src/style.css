@@ -136,9 +136,6 @@ body.dark-theme #spindle-logo-text {
 body.dark-theme #viewport-main {
     background: radial-gradient(circle at center, #2E2925 0%, #231F1C 62%, #1B1815 100%) !important;
 }
-body.dark-theme #vol-fill {
-    background-color: #C8C0B6 !important;
-}
 body.dark-theme ::-webkit-scrollbar-thumb {
     background: #423B35;
 }

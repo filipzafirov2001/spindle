@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spindle // Music Player</title>
+    <title>Spindle</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts: Cormorant Garamond, Plus Jakarta Sans, JetBrains Mono, Caveat -->
@@ -117,7 +117,7 @@
             </button>
 
             <!-- Centered Larger Playlist Artwork -->
-            <div id="hero-playlist-artwork" title="Click to Change Artwork" class="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-espresso shadow-md flex items-center justify-center overflow-hidden border border-stone cursor-pointer group relative mt-1">
+            <div id="hero-playlist-artwork" title="Click to Change Artwork" class="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-espresso shadow-md flex items-center justify-center overflow-hidden border border-stone cursor-pointer group relative mt-1 mx-auto">
                 <!-- Populated dynamically via JS -->
             </div>
 
@@ -145,13 +145,6 @@
                     <span>Add Songs</span>
                 </button>
 
-                <button id="btn-hero-import-yt" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone bg-oatmeal/70 hover:bg-oatmeal text-espresso text-xs font-medium transition active:scale-95" title="Import from YouTube / URL">
-                    <svg class="w-3.5 h-3.5 text-terracotta" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-                    </svg>
-                    <span>Import URL</span>
-                </button>
-
                 <button id="btn-toggle-reorder" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone bg-alabaster hover:bg-oatmeal text-espresso text-xs font-medium transition active:scale-95">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
@@ -172,20 +165,12 @@
                     <span id="playlist-count" class="font-mono text-[11px] px-2 py-0.5 rounded-full bg-stone/60 text-espresso shrink-0">2</span>
                 </div>
                 
-                <div class="flex items-center gap-2">
-                    <button id="btn-overview-import-yt" class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone bg-alabaster hover:bg-oatmeal text-espresso text-xs font-medium transition shadow-sm active:scale-95" title="Import from YouTube">
-                        <svg class="w-3.5 h-3.5 text-terracotta" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-                        </svg>
-                        <span>Import URL</span>
-                    </button>
-                    <button id="btn-create-playlist" class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-terracotta text-alabaster hover:bg-[#b04b25] text-xs font-medium transition shadow-sm active:scale-95">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
-                        </svg>
-                        <span>Create Playlist</span>
-                    </button>
-                </div>
+                <button id="btn-create-playlist" class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-terracotta text-alabaster hover:bg-[#b04b25] text-xs font-medium transition shadow-sm active:scale-95">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    <span>Create Playlist</span>
+                </button>
             </div>
 
             <!-- List Container -->
@@ -197,12 +182,13 @@
         <!-- BOTTOM SECTION: CURRENTLY PLAYING DECK (Hidden initially until a song/playlist is started) -->
         <section id="now-playing-section" class="hidden px-6 py-3.5 bg-alabaster border-t border-stone/80 flex-col gap-3 shrink-0 shadow-[0_-4px_20px_rgba(30,27,24,0.06)] transition-colors duration-300">
             <div class="flex items-center gap-4">
-                <!-- Mini Spinning Disc Cover -->
+                <!-- Mini Playlist Artwork / Spinning Disc Cover -->
                 <div class="relative w-14 h-14 rounded-2xl bg-espresso shadow-md flex items-center justify-center overflow-hidden shrink-0 border border-stone">
+                    <img id="now-playing-art-img" class="absolute inset-0 w-full h-full object-cover object-center hidden" alt="Artwork">
                     <div id="cover-disc" class="w-11 h-11 rounded-full border-2 border-neutral-800 flex items-center justify-center spin-art" style="background: radial-gradient(circle, #C85A32 0%, #C85A32 28%, #141413 30%, #222 45%, #111 47%, #292929 65%, #111 70%, #1c1c1c 100%);">
                         <div class="w-2 h-2 rounded-full bg-alabaster"></div>
                     </div>
-                    <div class="absolute inset-0 bg-gradient-to-tr from-black/30 via-transparent to-white/10 pointer-events-none"></div>
+                    <div class="absolute inset-0 bg-gradient-to-tr from-black/20 via-transparent to-white/10 pointer-events-none"></div>
                 </div>
 
                 <!-- Track Metadata -->
@@ -308,7 +294,7 @@
                         <div class="relative flex-1 flex items-center">
                             <input id="vol-slider" type="range" min="0" max="1" step="0.01" value="0.8" class="w-full z-10" aria-label="Volume">
                             <div class="w-full h-1 bg-stone rounded-full absolute left-0 pointer-events-none overflow-hidden">
-                                <div id="vol-fill" class="h-full bg-espresso" style="width: 80%;"></div>
+                                <div id="vol-fill" class="h-full bg-terracotta" style="width: 80%;"></div>
                             </div>
                         </div>
                     </div>

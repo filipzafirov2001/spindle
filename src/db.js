@@ -45,6 +45,16 @@ export class LocalLibraryDB {
         });
     }
 
+    async deleteAudioBlob(id) {
+        if (!this.db) return;
+        return new Promise((resolve) => {
+            const tx = this.db.transaction('audioFiles', 'readwrite');
+            tx.objectStore('audioFiles').delete(id);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+        });
+    }
+
     async saveMetadata(tracksMeta, playlists) {
         if (!this.db) return;
         return new Promise((resolve) => {

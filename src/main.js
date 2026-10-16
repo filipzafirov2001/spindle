@@ -23,8 +23,11 @@ import {
     handleLocalFiles,
     formatTime,
     selectAndPlayTrack,
-    showYoutubeImportModal
+    isPlaceholderArt,
+    cleanPlaylistTitle,
+    upgradeArtworkUrl
 } from './ui.js';
+import { initDownloadManager } from './downloadManager.js';
 
 async function hydrateLibrary() {
     await storageDB.init();
@@ -49,6 +52,70 @@ async function hydrateLibrary() {
         DEFAULT_SYNTH_TRACKS.forEach(st => {
             if (!AppState.tracksById[st.id]) AppState.tracksById[st.id] = { ...st };
         });
+
+        // Auto-heal existing playlists (clean "Album - " prefixes) and upgrade artwork
+        let libraryFixed = false;
+        for (const pl of AppState.playlists) {
+            const cleaned = cleanPlaylistTitle(pl.name);
+            if (cleaned && cleaned !== pl.name) {
+                const oldName = pl.name;
+                pl.name = cleaned;
+                libraryFixed = true;
+                if (typeof window !== 'undefined' && window.spindleDesktop?.renamePlaylistFolder) {
+                    window.spindleDesktop.renamePlaylistFolder({ oldName, newName: cleaned }).catch(() => {});
+                }
+            }
+        }
+
+        for (const track of Object.values(AppState.tracksById)) {
+            if (isPlaceholderArt(track.artwork)) {
+                if (track.ytId && track.ytId !== 'fallback') {
+                    track.artwork = `https://i.ytimg.com/vi/${track.ytId}/maxresdefault.jpg`;
+                    libraryFixed = true;
+                } else {
+                    track.artwork = null;
+                }
+            } else if (track.artwork) {
+                const up = upgradeArtworkUrl(track.artwork);
+                if (up !== track.artwork) {
+                    track.artwork = up;
+                    libraryFixed = true;
+                }
+            }
+        }
+
+        for (const pl of AppState.playlists) {
+            if (isPlaceholderArt(pl.artwork)) {
+                let resolved = null;
+                if (Array.isArray(pl.trackIds)) {
+                    for (const tid of pl.trackIds) {
+                        const t = AppState.tracksById[tid];
+                        if (t) {
+                            if (t.artwork && !isPlaceholderArt(t.artwork)) {
+                                resolved = upgradeArtworkUrl(t.artwork);
+                                break;
+                            }
+                            if (t.ytId && t.ytId !== 'fallback') {
+                                resolved = `https://i.ytimg.com/vi/${t.ytId}/maxresdefault.jpg`;
+                                break;
+                            }
+                        }
+                    }
+                }
+                pl.artwork = resolved;
+                libraryFixed = true;
+            } else if (pl.artwork) {
+                const up = upgradeArtworkUrl(pl.artwork);
+                if (up !== pl.artwork) {
+                    pl.artwork = up;
+                    libraryFixed = true;
+                }
+            }
+        }
+
+        if (libraryFixed) {
+            await persistState();
+        }
     } else {
         DEFAULT_SYNTH_TRACKS.forEach(t => {
             AppState.tracksById[t.id] = { ...t };
@@ -79,6 +146,7 @@ async function hydrateLibrary() {
 
 async function initApp() {
     await hydrateLibrary();
+    initDownloadManager();
 
     const turntableInstance = new Turntable3D('canvas-container');
     setTurntable(turntableInstance);
@@ -293,8 +361,14 @@ async function initApp() {
     document.getElementById('btn-hero-play').addEventListener('click', () => {
         const pl = getViewedPlaylist();
         if (pl && pl.trackIds.length > 0) {
-            AppState.playingPlaylistId = pl.id;
-            selectAndPlayTrack(0);
+            const firstPlayableIdx = pl.trackIds.findIndex(id => {
+                const t = AppState.tracksById[id];
+                return t && !t.isDownloading;
+            });
+            if (firstPlayableIdx !== -1) {
+                AppState.playingPlaylistId = pl.id;
+                selectAndPlayTrack(firstPlayableIdx);
+            }
         }
     });
 
@@ -302,14 +376,6 @@ async function initApp() {
         if (AppState.viewedPlaylistId) {
             showAddSongsModal(AppState.viewedPlaylistId);
         }
-    });
-
-    document.getElementById('btn-hero-import-yt')?.addEventListener('click', () => {
-        showYoutubeImportModal(AppState.viewedPlaylistId);
-    });
-
-    document.getElementById('btn-overview-import-yt')?.addEventListener('click', () => {
-        showYoutubeImportModal(null);
     });
 
     document.getElementById('btn-toggle-reorder').addEventListener('click', () => {
@@ -335,12 +401,16 @@ async function initApp() {
         document.getElementById('seek-fill').style.width = `${ratio * 100}%`;
         document.getElementById('time-current').textContent = formatTime(previewTime);
     });
-    seekSlider.addEventListener('change', (e) => {
-        const ratio = parseFloat(e.target.value) / 1000;
+
+    const commitSeek = () => {
+        const ratio = parseFloat(seekSlider.value) / 1000;
         audioEngine.seek(ratio * AppState.duration);
         AppState.isSeeking = false;
         updatePlayerUI();
-    });
+    };
+
+    seekSlider.addEventListener('change', commitSeek);
+    seekSlider.addEventListener('pointerup', commitSeek);
 
     // Volume & Mute
     const volSlider = document.getElementById('vol-slider');
@@ -438,6 +508,8 @@ async function initApp() {
     setInterval(() => {
         const track = getCurrentTrack();
         if (AppState.playbackState === 'PLAYING' && track && track.isSynth && !AppState.isSeeking) {
+            const tt = getTurntable();
+            if (tt && tt.mechState !== 'PLAYING') return;
             AppState.currentTime += 0.25;
             if (AppState.currentTime >= AppState.duration) {
                 handleTrackEnded();

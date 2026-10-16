@@ -4,6 +4,24 @@ const fs = require('fs');
 const os = require('os');
 const { spawn, execSync } = require('child_process');
 const { pathToFileURL } = require('url');
+const { Readable } = require('stream');
+
+function getMimeType(filePath) {
+    const ext = path.extname(filePath).toLowerCase();
+    switch (ext) {
+        case '.mp3': return 'audio/mpeg';
+        case '.wav': return 'audio/wav';
+        case '.ogg': return 'audio/ogg';
+        case '.flac': return 'audio/flac';
+        case '.m4a':
+        case '.aac': return 'audio/mp4';
+        case '.jpg':
+        case '.jpeg': return 'image/jpeg';
+        case '.png': return 'image/png';
+        case '.webp': return 'image/webp';
+        default: return 'audio/mpeg';
+    }
+}
 
 // 1. Register privileged protocol for local audio streaming & seeking (HTTP range requests)
 protocol.registerSchemesAsPrivileged([
@@ -55,13 +73,14 @@ function findBinary(name) {
 }
 
 function createWindow() {
+    app.setName('Spindle');
     mainWindow = new BrowserWindow({
         width: 1320,
         height: 860,
         minWidth: 920,
         minHeight: 640,
         backgroundColor: '#1E1B18',
-        title: 'Spindle Music Player',
+        title: 'Spindle',
         autoHideMenuBar: true,
         webPreferences: {
             preload: path.join(__dirname, 'preload.cjs'),
@@ -90,14 +109,69 @@ function createWindow() {
     });
 }
 
-// Setup custom streaming media protocol and app lifecycle
+// Setup custom streaming media protocol with full HTTP range seeking support
 app.whenReady().then(() => {
-    protocol.handle('spindle-media', (request) => {
+    protocol.handle('spindle-media', async (request) => {
         try {
             // URL format: spindle-media://local/<absolute-path>
             const urlPath = request.url.replace(/^spindle-media:\/\/local\//i, '');
             const filePath = decodeURIComponent(urlPath);
-            return net.fetch(pathToFileURL(filePath).toString());
+
+            if (!fs.existsSync(filePath)) {
+                return new Response('File not found', { status: 404 });
+            }
+
+            const stat = fs.statSync(filePath);
+            const totalSize = stat.size;
+            const mimeType = getMimeType(filePath);
+            const rangeHeader = request.headers.get('range');
+
+            if (rangeHeader) {
+                const match = rangeHeader.match(/bytes=(\d+)-(\d+)?/);
+                if (match) {
+                    const start = parseInt(match[1], 10);
+                    const end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
+
+                    if (start >= totalSize || end >= totalSize || start > end) {
+                        return new Response('Requested range not satisfiable', {
+                            status: 416,
+                            headers: {
+                                'Content-Range': `bytes */${totalSize}`,
+                                'Accept-Ranges': 'bytes'
+                            }
+                        });
+                    }
+
+                    const chunkSize = (end - start) + 1;
+                    const nodeStream = fs.createReadStream(filePath, { start, end });
+                    const webStream = Readable.toWeb(nodeStream);
+
+                    return new Response(webStream, {
+                        status: 206,
+                        statusText: 'Partial Content',
+                        headers: {
+                            'Content-Range': `bytes ${start}-${end}/${totalSize}`,
+                            'Accept-Ranges': 'bytes',
+                            'Content-Length': String(chunkSize),
+                            'Content-Type': mimeType,
+                            'Cache-Control': 'no-cache'
+                        }
+                    });
+                }
+            }
+
+            const nodeStream = fs.createReadStream(filePath);
+            const webStream = Readable.toWeb(nodeStream);
+
+            return new Response(webStream, {
+                status: 200,
+                headers: {
+                    'Content-Length': String(totalSize),
+                    'Accept-Ranges': 'bytes',
+                    'Content-Type': mimeType,
+                    'Cache-Control': 'no-cache'
+                }
+            });
         } catch (err) {
             console.error('Failed to load local media file:', err);
             return new Response('File not found', { status: 404 });
@@ -155,21 +229,100 @@ ipcMain.handle('spindle:check-tools', async () => {
     };
 });
 
-// IPC Handler: Fetch YouTube Video / Audio Metadata
-ipcMain.handle('spindle:youtube-info', async (_event, url) => {
+function cleanPlaylistTitle(title) {
+    if (!title || typeof title !== 'string') return '';
+    return title.replace(/^(Album|EP|Single|Playlist)\s*[-–—:]\s*/i, '').trim();
+}
+
+function cleanArtist(artist) {
+    if (!artist || typeof artist !== 'string') return 'Unknown Artist';
+    let cleaned = artist.replace(/\s*-\s*Topic$/i, '').trim();
+    cleaned = cleaned.replace(/\s*Topic$/i, '').trim();
+    return cleaned || 'Unknown Artist';
+}
+
+function findCookiesFile(musicDir) {
+    const candidatePaths = [
+        path.join(musicDir, 'cookies.txt'),
+        path.join(app.getPath('userData'), 'cookies.txt'),
+        path.join(os.homedir(), '.config', 'spindle', 'cookies.txt')
+    ];
+    for (const cp of candidatePaths) {
+        if (fs.existsSync(cp)) return cp;
+    }
+    return null;
+}
+
+function isPlaceholderThumbnail(url) {
+    if (!url || typeof url !== 'string') return true;
+    const lower = url.trim().toLowerCase();
+    if (lower.length === 0) return true;
+    if (lower.includes('no_thumbnail')) return true;
+    if (lower.includes('unavailable')) return true;
+    if (lower.includes('placeholder')) return true;
+    if (lower.includes('desktop/unavailable')) return true;
+    if (lower.includes('default_playlist')) return true;
+    if (lower.includes('/vi//')) return true;
+    return false;
+}
+
+function resolveBestThumbnail(item) {
+    if (!item) return '';
+    if (Array.isArray(item.thumbnails) && item.thumbnails.length > 0) {
+        // First try to find a clean thumbnail without ?sqp=
+        for (let i = item.thumbnails.length - 1; i >= 0; i--) {
+            const u = item.thumbnails[i]?.url;
+            if (u && !isPlaceholderThumbnail(u) && !u.includes('?sqp=')) {
+                return u;
+            }
+        }
+        // If only sqp thumbnails exist, upgrade to 16:9 maxresdefault if it has video id
+        for (let i = item.thumbnails.length - 1; i >= 0; i--) {
+            const u = item.thumbnails[i]?.url;
+            if (u && !isPlaceholderThumbnail(u)) {
+                const m = u.match(/\/vi(?:_webp)?\/([a-zA-Z0-9_-]{8,})\//);
+                if (m) {
+                    return `https://i.ytimg.com/vi/${m[1]}/maxresdefault.jpg`;
+                }
+                return u;
+            }
+        }
+    }
+    if (item.thumbnail && !isPlaceholderThumbnail(item.thumbnail)) {
+        const m = item.thumbnail.match(/\/vi(?:_webp)?\/([a-zA-Z0-9_-]{8,})\//);
+        if (m) {
+            return `https://i.ytimg.com/vi/${m[1]}/maxresdefault.jpg`;
+        }
+        return item.thumbnail;
+    }
+    if (item.id && typeof item.id === 'string' && item.id.length >= 8) {
+        return `https://i.ytimg.com/vi/${item.id}/maxresdefault.jpg`;
+    }
+    return '';
+}
+
+// IPC Handler: Fast YouTube Video / Playlist Inspection (flat playlist, 1-2s response)
+ipcMain.handle('spindle:youtube-inspect', async (_event, url) => {
     return new Promise((resolve, reject) => {
         if (!url || typeof url !== 'string') {
             return reject(new Error('Please provide a valid YouTube URL.'));
         }
 
         const ytBin = findBinary('yt-dlp');
-        const proc = spawn(ytBin, [
+        const nodeBin = findBinary('node');
+        const cookiesFile = findCookiesFile(getMusicDir());
+
+        const inspectArgs = [
             '--dump-single-json',
-            '--no-playlist',
+            '--flat-playlist',
             '--no-warnings',
-            '--skip-download',
-            url.trim()
-        ]);
+            '--skip-download'
+        ];
+        if (nodeBin) inspectArgs.push('--js-runtimes', 'node');
+        if (cookiesFile) inspectArgs.push('--cookies', cookiesFile);
+        inspectArgs.push(url.trim());
+
+        const proc = spawn(ytBin, inspectArgs);
 
         let stdout = '';
         let stderr = '';
@@ -185,29 +338,70 @@ ipcMain.handle('spindle:youtube-info', async (_event, url) => {
             try {
                 const data = JSON.parse(stdout);
 
-                // Extract highest resolution thumbnail
-                let thumb = data.thumbnail || '';
-                if (Array.isArray(data.thumbnails) && data.thumbnails.length > 0) {
-                    thumb = data.thumbnails[data.thumbnails.length - 1].url || thumb;
+                if (data._type === 'playlist' || Array.isArray(data.entries)) {
+                    const rawEntries = data.entries || [];
+                    const entries = rawEntries.map(e => {
+                        let t = (e.title || 'Track').trim();
+                        let a = cleanArtist(e.artist || e.uploader || e.channel || 'Unknown Artist');
+                        if (t.includes(' - ') && (!e.artist || a === cleanArtist(e.uploader))) {
+                            const p = t.split(' - ');
+                            a = cleanArtist(p[0]);
+                            t = p.slice(1).join(' - ').trim();
+                        }
+                        const entryThumb = resolveBestThumbnail(e);
+                        return {
+                            id: e.id,
+                            title: t,
+                            artist: a,
+                            duration: Math.round(e.duration || 180),
+                            thumbnail: entryThumb
+                        };
+                    });
+
+                    let plThumb = '';
+                    for (const entry of entries) {
+                        if (entry.thumbnail && !isPlaceholderThumbnail(entry.thumbnail)) {
+                            plThumb = entry.thumbnail;
+                            break;
+                        }
+                    }
+                    if (!plThumb) {
+                        plThumb = resolveBestThumbnail(data);
+                    }
+
+                    return resolve({
+                        isPlaylist: true,
+                        id: data.id,
+                        title: cleanPlaylistTitle(data.title) || 'Imported Playlist',
+                        uploader: data.uploader || 'YouTube',
+                        count: entries.length,
+                        playlistThumbnail: plThumb,
+                        thumbnail: plThumb,
+                        entries
+                    });
                 }
 
-                // Determine cleaned title & artist
-                let title = data.title || 'Unknown Title';
-                let artist = data.artist || data.creator || data.uploader || 'YouTube';
-                if (data.track) title = data.track;
-                if (data.artist) artist = data.artist;
+                // Single video
+                const thumb = resolveBestThumbnail(data);
 
-                if (title.includes(' - ') && (!data.artist || artist === data.uploader)) {
+                let title = (data.title || 'Unknown Title').trim();
+                let artist = cleanArtist(data.artist || data.creator || data.uploader || 'YouTube');
+                if (data.track) title = data.track.trim();
+                if (data.artist) artist = cleanArtist(data.artist);
+
+                if (title.includes(' - ') && (!data.artist || artist === cleanArtist(data.uploader))) {
                     const parts = title.split(' - ');
-                    artist = parts[0].trim();
+                    artist = cleanArtist(parts[0]);
                     title = parts.slice(1).join(' - ').trim();
                 }
 
                 resolve({
+                    isPlaylist: false,
                     id: data.id,
                     title,
                     artist,
-                    duration: Math.round(data.duration || 0),
+                    duration: Math.round(data.duration || 180),
+                    playlistThumbnail: thumb,
                     thumbnail: thumb,
                     webpage_url: data.webpage_url || url
                 });
@@ -218,53 +412,98 @@ ipcMain.handle('spindle:youtube-info', async (_event, url) => {
     });
 });
 
-// IPC Handler: Download YouTube Track to Local MP3 with Embedded Tags
-ipcMain.handle('spindle:youtube-download', async (event, { url, playlistName, customTitle, customArtist, thumbnail: passedThumb, duration: passedDuration }) => {
-    return new Promise((resolve, reject) => {
-        const musicDir = getMusicDir();
-        const plFolder = path.join(musicDir, sanitizeName(playlistName || 'Downloads'));
-        if (!fs.existsSync(plFolder)) {
-            fs.mkdirSync(plFolder, { recursive: true });
+// IPC Handler: Start Background Download (Fire-and-Forget, streaming per-track completions)
+ipcMain.handle('spindle:start-import', async (event, { jobId, url, playlistName, targetPlaylistId }) => {
+    if (!url || typeof url !== 'string') {
+        throw new Error('Valid URL required');
+    }
+
+    const musicDir = getMusicDir();
+    const ytBin = findBinary('yt-dlp');
+    const ffBin = findBinary('ffmpeg');
+    const nodeBin = findBinary('node');
+    const cookiesFile = findCookiesFile(musicDir);
+
+    const sendToWindow = (channel, data) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send(channel, data);
+        }
+    };
+
+    let resolvedPlaylistName = playlistName;
+    let plFolder = null;
+    let dlProcStarted = false;
+    let discoveredEntries = [];
+
+    const startDownload = (folderPath, expectedEntries = []) => {
+        if (dlProcStarted) return;
+        dlProcStarted = true;
+
+        if (!fs.existsSync(folderPath)) {
+            fs.mkdirSync(folderPath, { recursive: true });
         }
 
-        const ytBin = findBinary('yt-dlp');
-        const ffBin = findBinary('ffmpeg');
-
-        const outputTemplate = path.join(plFolder, '%(title)s.%(ext)s');
-
-        const args = [
-            '--no-playlist',
+        const outputTemplate = path.join(folderPath, '%(title)s.%(ext)s');
+        const dlArgs = [
             '--extract-audio',
             '--audio-format', 'mp3',
-            '--audio-quality', '0', // Best VBR / 320kbps
+            '--audio-quality', '0', // Best 320kbps
             '--embed-thumbnail',
             '--add-metadata',
+            '--ignore-errors',
+            '--no-warnings',
             '--ffmpeg-location', path.dirname(ffBin),
             '--output', outputTemplate,
-            '--print', 'after_move:filepath',
-            '--newline',
-            url.trim()
+            '--print', 'after_move:SPINDLE_READY\t%(id)s\t%(title)s\t%(artist,uploader)s\t%(duration)s\t%(filepath)s\t%(thumbnail)s',
+            '--newline'
         ];
+        if (nodeBin) dlArgs.push('--js-runtimes', 'node');
+        if (cookiesFile) dlArgs.push('--cookies', cookiesFile);
+        dlArgs.push(url.trim());
 
-        const proc = spawn(ytBin, args);
+        const dlProc = spawn(ytBin, dlArgs);
+        let dlStderr = '';
+        const completedTracks = [];
 
-        let exactFilepath = null;
-        let jsonMetadata = null;
-        let stderr = '';
-
-        proc.stdout.on('data', (d) => {
+        dlProc.stdout.on('data', (d) => {
             const text = d.toString();
             const lines = text.split('\n');
             for (const line of lines) {
                 const trimmed = line.trim();
                 if (!trimmed) continue;
 
-                // Download percentage & speed parsing
-                // e.g. [download]  45.2% of  7.82MiB at  2.41MiB/s ETA 00:01
+                if (trimmed.startsWith('SPINDLE_READY\t')) {
+                    const parts = trimmed.replace('SPINDLE_READY\t', '').split('\t');
+                    const [ytId, title, artist, durationStr, targetFile, thumbUrl] = parts;
+                    if (targetFile && fs.existsSync(targetFile)) {
+                        const mediaUrl = `spindle-media://local/${encodeURIComponent(targetFile)}`;
+                        let trackThumb = (thumbUrl && !isPlaceholderThumbnail(thumbUrl)) ? thumbUrl : '';
+                        if (!trackThumb && ytId && ytId !== 'fallback') {
+                            trackThumb = `https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`;
+                        }
+                        const trackObj = {
+                            jobId,
+                            targetPlaylistId,
+                            ytId,
+                            title: title || path.basename(targetFile, '.mp3'),
+                            artist: cleanArtist(artist),
+                            duration: parseFloat(durationStr) || 180,
+                            filePath: targetFile,
+                            url: mediaUrl,
+                            artwork: trackThumb
+                        };
+                        completedTracks.push(trackObj);
+                        sendToWindow('spindle:track-ready', trackObj);
+                    }
+                    continue;
+                }
+
+                // Download percentage parsing
                 const progressMatch = trimmed.match(/\[download\]\s+(\d+\.?\d*)%\s+of\s+(\S+)\s+at\s+(\S+)\s+ETA\s+(\S+)/);
                 if (progressMatch) {
-                    event.sender.send('spindle:download-progress', {
-                        url,
+                    sendToWindow('spindle:import-progress', {
+                        jobId,
+                        targetPlaylistId,
                         percent: parseFloat(progressMatch[1]),
                         size: progressMatch[2],
                         speed: progressMatch[3],
@@ -276,9 +515,9 @@ ipcMain.handle('spindle:youtube-download', async (event, { url, playlistName, cu
                 }
 
                 if (trimmed.includes('[ExtractAudio]')) {
-                    event.sender.send('spindle:download-progress', {
-                        url,
-                        percent: 90,
+                    sendToWindow('spindle:import-progress', {
+                        jobId,
+                        targetPlaylistId,
                         stage: 'converting',
                         message: 'Extracting high-quality MP3...'
                     });
@@ -286,85 +525,359 @@ ipcMain.handle('spindle:youtube-download', async (event, { url, playlistName, cu
                 }
 
                 if (trimmed.includes('[EmbedThumbnail]') || trimmed.includes('[Metadata]')) {
-                    event.sender.send('spindle:download-progress', {
-                        url,
-                        percent: 96,
+                    sendToWindow('spindle:import-progress', {
+                        jobId,
+                        targetPlaylistId,
                         stage: 'metadata',
                         message: 'Embedding artwork and ID3 tags...'
                     });
                     continue;
                 }
-
-                if (trimmed.endsWith('.mp3') && fs.existsSync(trimmed)) {
-                    exactFilepath = trimmed;
-                    continue;
-                }
-
-                // Check for JSON output at end
-                if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-                    try {
-                        jsonMetadata = JSON.parse(trimmed);
-                    } catch (_) {}
-                }
             }
         });
 
-        proc.stderr.on('data', (d) => {
-            stderr += d.toString();
-        });
+        dlProc.stderr.on('data', d => { dlStderr += d.toString(); });
 
-        proc.on('close', (code) => {
-            if (code !== 0) {
-                return reject(new Error(stderr || `Download failed with exit code ${code}`));
-            }
-
-            let targetFile = exactFilepath;
-            if (!targetFile || !fs.existsSync(targetFile)) {
-                // Find newest MP3 file in playlist folder
-                const files = fs.readdirSync(plFolder)
+        dlProc.on('close', async (code) => {
+            // Fallback: If no SPINDLE_READY lines were captured (or partial download), inspect folder for new mp3s
+            if (completedTracks.length === 0 && fs.existsSync(folderPath)) {
+                const files = fs.readdirSync(folderPath)
                     .filter(f => f.toLowerCase().endsWith('.mp3'))
-                    .map(f => ({ name: f, time: fs.statSync(path.join(plFolder, f)).mtimeMs }))
+                    .map(f => ({ name: f, time: fs.statSync(path.join(folderPath, f)).mtimeMs }))
                     .sort((a, b) => b.time - a.time);
 
-                if (files.length === 0) {
-                    return reject(new Error('Downloaded MP3 could not be located in ' + plFolder));
+                if (files.length > 0) {
+                    const recent = files[0];
+                    const fullP = path.join(folderPath, recent.name);
+                    const mediaUrl = `spindle-media://local/${encodeURIComponent(fullP)}`;
+                    let t = recent.name.replace(/\.mp3$/i, '');
+                    let a = 'Unknown Artist';
+                    if (t.includes(' - ')) {
+                        const p = t.split(' - ');
+                        a = cleanArtist(p[0]);
+                        t = p.slice(1).join(' - ').trim();
+                    }
+                    const fallbackTrack = {
+                        jobId,
+                        targetPlaylistId,
+                        ytId: 'fallback',
+                        title: t,
+                        artist: a,
+                        duration: 180,
+                        filePath: fullP,
+                        url: mediaUrl
+                    };
+                    completedTracks.push(fallbackTrack);
+                    sendToWindow('spindle:track-ready', fallbackTrack);
+                }
+            }
+
+            // Fallback Search Resolution for Missing / Gated Tracks
+            // When YouTube Music Premium or region locks prevent direct download, search for individual tracks
+            const completedYtIds = new Set(completedTracks.map(t => t.ytId));
+            const completedTitles = new Set(completedTracks.map(t => t.title.toLowerCase().trim()));
+
+            const tracksToResolve = (expectedEntries && expectedEntries.length > 0) ? expectedEntries : discoveredEntries;
+            const missingEntries = tracksToResolve.filter(e => {
+                if (!e) return false;
+                if (completedYtIds.has(e.id)) return false;
+                if (e.title && completedTitles.has(e.title.toLowerCase().trim())) return false;
+                return true;
+            });
+
+            if (missingEntries.length > 0) {
+                sendToWindow('spindle:import-progress', {
+                    jobId,
+                    targetPlaylistId,
+                    stage: 'downloading',
+                    message: `Resolving ${missingEntries.length} track${missingEntries.length > 1 ? 's' : ''} via YouTube search...`
+                });
+
+                for (let i = 0; i < missingEntries.length; i++) {
+                    const item = missingEntries[i];
+                    const cleanTit = (item.title || 'Track').trim();
+                    const cleanArt = cleanArtist(item.artist);
+
+                    sendToWindow('spindle:import-progress', {
+                        jobId,
+                        targetPlaylistId,
+                        stage: 'downloading',
+                        percent: Math.round(((i + 1) / missingEntries.length) * 100),
+                        message: `Searching audio for: ${cleanTit} (${i + 1}/${missingEntries.length})...`
+                    });
+
+                    const searchQuery = cleanArt && cleanArt !== 'Unknown Artist'
+                        ? `ytsearch1:${cleanArt} ${cleanTit}`
+                        : `ytsearch1:${cleanTit}`;
+
+                    const trackOutputFile = path.join(folderPath, `${sanitizeName(cleanTit)}.%(ext)s`);
+
+                    const fallbackArgs = [
+                        '--extract-audio',
+                        '--audio-format', 'mp3',
+                        '--audio-quality', '0',
+                        '--embed-thumbnail',
+                        '--add-metadata',
+                        '--no-warnings',
+                        '--ffmpeg-location', path.dirname(ffBin),
+                        '--output', trackOutputFile,
+                        '--print', 'after_move:SPINDLE_READY\t%(id)s\t%(title)s\t%(artist,uploader)s\t%(duration)s\t%(filepath)s\t%(thumbnail)s',
+                        '--newline'
+                    ];
+                    if (nodeBin) fallbackArgs.push('--js-runtimes', 'node');
+                    if (cookiesFile) fallbackArgs.push('--cookies', cookiesFile);
+                    fallbackArgs.push(searchQuery);
+
+                    try {
+                        await new Promise((resolve) => {
+                            const fbProc = spawn(ytBin, fallbackArgs);
+                            let fbOut = '';
+                            fbProc.stdout.on('data', d => { fbOut += d.toString(); });
+                            fbProc.on('close', () => {
+                                const fbLines = fbOut.split('\n');
+                                for (const l of fbLines) {
+                                    const trimmedLine = l.trim();
+                                    if (trimmedLine.startsWith('SPINDLE_READY\t')) {
+                                        const parts = trimmedLine.replace('SPINDLE_READY\t', '').split('\t');
+                                        const [actualYtId, actualTitle, actualArtist, durationStr, targetFile, thumbUrl] = parts;
+                                        if (targetFile && fs.existsSync(targetFile)) {
+                                            const mediaUrl = `spindle-media://local/${encodeURIComponent(targetFile)}`;
+                                            const effectiveArt = (!isPlaceholderThumbnail(item.thumbnail) ? item.thumbnail : '') ||
+                                                                 (!isPlaceholderThumbnail(thumbUrl) ? thumbUrl : '') ||
+                                                                 (actualYtId ? `https://i.ytimg.com/vi/${actualYtId}/maxresdefault.jpg` : '');
+                                            const trackObj = {
+                                                jobId,
+                                                targetPlaylistId,
+                                                ytId: item.id, // Keeps placeholder match intact
+                                                actualYtId,
+                                                title: cleanTit,
+                                                artist: cleanArt || cleanArtist(actualArtist) || 'Unknown Artist',
+                                                duration: parseFloat(durationStr) || item.duration || 180,
+                                                filePath: targetFile,
+                                                url: mediaUrl,
+                                                artwork: effectiveArt
+                                            };
+                                            completedTracks.push(trackObj);
+                                            sendToWindow('spindle:track-ready', trackObj);
+                                        }
+                                        break;
+                                    }
+                                }
+                                resolve();
+                            });
+                        });
+                    } catch (fbErr) {
+                        console.warn(`Fallback search download failed for ${cleanTit}:`, fbErr);
+                    }
+                }
+            }
+
+            if (code === 0 || completedTracks.length > 0) {
+                if (resolvedPlaylistName && plFolder) {
+                    const targetDir = path.join(musicDir, sanitizeName(resolvedPlaylistName));
+                    if (plFolder !== targetDir && fs.existsSync(plFolder)) {
+                        try {
+                            if (!fs.existsSync(targetDir)) {
+                                fs.renameSync(plFolder, targetDir);
+                                plFolder = targetDir;
+                            } else {
+                                const files = fs.readdirSync(plFolder);
+                                for (const f of files) {
+                                    const src = path.join(plFolder, f);
+                                    const dst = path.join(targetDir, f);
+                                    if (!fs.existsSync(dst)) fs.renameSync(src, dst);
+                                }
+                                try { fs.rmdirSync(plFolder); } catch (_) {}
+                                plFolder = targetDir;
+                            }
+                        } catch (err) {
+                            console.warn('Could not rename import folder at completion:', err);
+                        }
+                    }
                 }
 
-                targetFile = path.join(plFolder, files[0].name);
+                sendToWindow('spindle:import-completed', {
+                    jobId,
+                    targetPlaylistId,
+                    success: true,
+                    count: completedTracks.length
+                });
+            } else {
+                sendToWindow('spindle:import-error', {
+                    jobId,
+                    targetPlaylistId,
+                    error: dlStderr || `yt-dlp exited with code ${code}`
+                });
             }
-
-            const baseName = path.basename(targetFile);
-            let finalTitle = customTitle || (jsonMetadata && jsonMetadata.title) || baseName.replace(/\.mp3$/i, '');
-            let finalArtist = customArtist || (jsonMetadata && (jsonMetadata.artist || jsonMetadata.uploader)) || 'Unknown Artist';
-            let finalDuration = passedDuration || (jsonMetadata && jsonMetadata.duration) || 180;
-            let thumbnail = passedThumb || (jsonMetadata && jsonMetadata.thumbnail) || '';
-
-            if (baseName.includes(' - ') && !customTitle) {
-                const parts = baseName.replace(/\.mp3$/i, '').split(' - ');
-                finalArtist = parts[0].trim();
-                finalTitle = parts.slice(1).join(' - ').trim();
-            }
-
-            const mediaUrl = `spindle-media://local/${encodeURIComponent(targetFile)}`;
-
-            event.sender.send('spindle:download-progress', {
-                url,
-                percent: 100,
-                stage: 'completed',
-                message: 'Import complete!'
-            });
-
-            resolve({
-                success: true,
-                filePath: targetFile,
-                url: mediaUrl,
-                title: finalTitle,
-                artist: finalArtist,
-                duration: finalDuration,
-                thumbnail: thumbnail || null
-            });
         });
+    };
+
+    // Step 1: Quick inspection in parallel to populate playlist with placeholder tracks
+    const inspectArgs = [
+        '--dump-single-json',
+        '--flat-playlist',
+        '--no-warnings',
+        '--skip-download'
+    ];
+    if (nodeBin) inspectArgs.push('--js-runtimes', 'node');
+    if (cookiesFile) inspectArgs.push('--cookies', cookiesFile);
+    inspectArgs.push(url.trim());
+
+    const inspectProc = spawn(ytBin, inspectArgs);
+
+    let inspectStdout = '';
+    inspectProc.stdout.on('data', d => { inspectStdout += d.toString(); });
+    inspectProc.on('close', code => {
+        if (code === 0) {
+            try {
+                const data = JSON.parse(inspectStdout);
+                if (data._type === 'playlist' || Array.isArray(data.entries)) {
+                    const rawEntries = data.entries || [];
+                    const entries = rawEntries.map(e => {
+                        let t = (e.title || 'Track').trim();
+                        let a = cleanArtist(e.artist || e.uploader || e.channel || 'Unknown Artist');
+                        if (t.includes(' - ') && (!e.artist || a === cleanArtist(e.uploader))) {
+                            const p = t.split(' - ');
+                            a = cleanArtist(p[0]);
+                            t = p.slice(1).join(' - ').trim();
+                        }
+                        const entryThumb = resolveBestThumbnail(e);
+                        return {
+                            id: e.id,
+                            title: t,
+                            artist: a,
+                            duration: Math.round(e.duration || 180),
+                            thumbnail: entryThumb
+                        };
+                    });
+
+                    let plThumb = '';
+                    for (const entry of entries) {
+                        if (entry.thumbnail && !isPlaceholderThumbnail(entry.thumbnail)) {
+                            plThumb = entry.thumbnail;
+                            break;
+                        }
+                    }
+                    if (!plThumb) {
+                        plThumb = resolveBestThumbnail(data);
+                    }
+
+                    const discoveredTitle = cleanPlaylistTitle(data.title) || playlistName;
+                    resolvedPlaylistName = discoveredTitle;
+                    plFolder = path.join(musicDir, sanitizeName(resolvedPlaylistName));
+                    discoveredEntries = entries;
+
+                    sendToWindow('spindle:import-discovered', {
+                        jobId,
+                        targetPlaylistId,
+                        isPlaylist: true,
+                        playlistTitle: discoveredTitle,
+                        playlistThumbnail: plThumb,
+                        entries
+                    });
+
+                    startDownload(plFolder, entries);
+                } else {
+                    let t = (data.title || 'Track').trim();
+                    let a = cleanArtist(data.artist || data.uploader || 'YouTube');
+                    if (data.track) t = data.track.trim();
+                    if (t.includes(' - ') && (!data.artist || a === cleanArtist(data.uploader))) {
+                        const p = t.split(' - ');
+                        a = cleanArtist(p[0]);
+                        t = p.slice(1).join(' - ').trim();
+                    }
+                    const vidThumb = resolveBestThumbnail(data);
+
+                    const isGenericName = !playlistName || playlistName.startsWith('Importing') || playlistName.startsWith('Playlist #');
+                    resolvedPlaylistName = isGenericName ? t : (playlistName || t);
+                    plFolder = path.join(musicDir, sanitizeName(resolvedPlaylistName));
+
+                    const singleEntry = {
+                        id: data.id,
+                        title: t,
+                        artist: a,
+                        duration: Math.round(data.duration || 180),
+                        thumbnail: vidThumb
+                    };
+                    discoveredEntries = [singleEntry];
+
+                    sendToWindow('spindle:import-discovered', {
+                        jobId,
+                        targetPlaylistId,
+                        isPlaylist: false,
+                        playlistTitle: resolvedPlaylistName,
+                        playlistThumbnail: vidThumb,
+                        entry: singleEntry
+                    });
+
+                    startDownload(plFolder, [singleEntry]);
+                }
+            } catch (_) {
+                plFolder = path.join(musicDir, sanitizeName(playlistName || 'Downloads'));
+                startDownload(plFolder, []);
+            }
+        } else {
+            plFolder = path.join(musicDir, sanitizeName(playlistName || 'Downloads'));
+            startDownload(plFolder, []);
+        }
     });
+
+    // Safety timeout: If inspection hangs longer than 15 seconds, start downloading to fallback folder
+    setTimeout(() => {
+        if (!dlProcStarted) {
+            plFolder = path.join(musicDir, sanitizeName(playlistName || 'Downloads'));
+            startDownload(plFolder, discoveredEntries);
+        }
+    }, 15000);
+
+    return { started: true, jobId };
+});
+
+
+// IPC Handler: Rename local playlist folder
+ipcMain.handle('spindle:rename-playlist-folder', async (_event, { oldName, newName }) => {
+    try {
+        if (!oldName || !newName || oldName === newName) return { success: true };
+        const musicDir = getMusicDir();
+        const oldPath = path.join(musicDir, sanitizeName(oldName));
+        const newPath = path.join(musicDir, sanitizeName(newName));
+
+        if (fs.existsSync(oldPath) && oldPath !== newPath) {
+            if (!fs.existsSync(newPath)) {
+                fs.renameSync(oldPath, newPath);
+            } else {
+                const files = fs.readdirSync(oldPath);
+                for (const f of files) {
+                    const src = path.join(oldPath, f);
+                    const dst = path.join(newPath, f);
+                    if (!fs.existsSync(dst)) {
+                        fs.renameSync(src, dst);
+                    }
+                }
+                try { fs.rmdirSync(oldPath); } catch (_) {}
+            }
+        }
+        return { success: true, newPath };
+    } catch (err) {
+        console.error('Failed to rename playlist folder:', err);
+        return { success: false, error: err.message };
+    }
+});
+
+// IPC Handler: Delete local playlist folder and all files
+ipcMain.handle('spindle:delete-playlist-folder', async (_event, folderName) => {
+    try {
+        if (!folderName) return { success: false, error: 'Folder name required' };
+        const musicDir = getMusicDir();
+        const target = path.join(musicDir, sanitizeName(folderName));
+        if (fs.existsSync(target)) {
+            fs.rmSync(target, { recursive: true, force: true });
+        }
+        return { success: true };
+    } catch (err) {
+        console.error('Failed to delete playlist folder:', err);
+        return { success: false, error: err.message };
+    }
 });
 
 // IPC Handler: Open local music folder in system file manager

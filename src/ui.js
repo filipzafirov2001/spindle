@@ -2,6 +2,7 @@ import { VINYL_COLORS } from './constants.js';
 import { storageDB } from './db.js';
 import { AppState, getPlayingPlaylist, getViewedPlaylist, getCurrentTrack, persistState, parseAudioTitleArtist } from './state.js';
 import { audioEngine } from './audio.js';
+import { startBackgroundImport } from './downloadManager.js';
 
 let turntable3D = null;
 
@@ -37,6 +38,39 @@ export function escapeHtml(str) {
         .replace(/"/g, '&quot;');
 }
 
+export function cleanPlaylistTitle(title) {
+    if (!title || typeof title !== 'string') return '';
+    return title.replace(/^(Album|EP|Single|Playlist)\s*[-–—:]\s*/i, '').trim();
+}
+
+export function upgradeArtworkUrl(url) {
+    if (!url || typeof url !== 'string') return url;
+    return url.replace(/\/vi(?:_webp)?\/([a-zA-Z0-9_-]+)\/(?:hqdefault|mqdefault|sddefault|default)\.jpg(?:\?.*)?/, '/vi/$1/maxresdefault.jpg');
+}
+
+export function isPlaceholderArt(url) {
+    if (!url || typeof url !== 'string') return true;
+    const lower = url.trim().toLowerCase();
+    if (lower.length === 0) return true;
+    if (lower.includes('no_thumbnail')) return true;
+    if (lower.includes('unavailable')) return true;
+    if (lower.includes('placeholder')) return true;
+    if (lower.includes('desktop/unavailable')) return true;
+    if (lower.includes('default_playlist')) return true;
+    if (lower.includes('/vi//')) return true;
+    return false;
+}
+
+export function getHeroFallbackDiscHtml(pl) {
+    const color = (pl && pl.color) || '#C85A32';
+    return `
+        <div class="w-20 h-20 sm:w-22 sm:h-22 rounded-full border-4 border-neutral-800 flex items-center justify-center" style="background: radial-gradient(circle, ${color} 0%, ${color} 28%, #141413 30%, #222 45%, #111 47%, #292929 65%, #111 70%, #1c1c1c 100%);">
+            <div class="w-2.5 h-2.5 rounded-full bg-alabaster"></div>
+        </div>
+        <div class="absolute inset-0 bg-gradient-to-tr from-black/30 via-transparent to-white/10 pointer-events-none"></div>
+    `;
+}
+
 // Updates the bottom Now Playing bar (hidden until a song/playlist is started)
 export function updatePlayerUI() {
     const nowPlayingSection = document.getElementById('now-playing-section');
@@ -65,13 +99,42 @@ export function updatePlayerUI() {
     document.getElementById('current-title').textContent = track.title;
     document.getElementById('current-artist').textContent = track.artist;
 
+    const artImg = document.getElementById('now-playing-art-img');
     const coverDisc = document.getElementById('cover-disc');
-    coverDisc.style.background = `radial-gradient(circle, ${track.labelColor} 0%, ${track.labelColor} 28%, #141413 30%, #242424 46%, #111 48%, #292929 65%, #111 70%, #1c1c1c 100%)`;
+    let artworkUrl = (!isPlaceholderArt(playingPl?.artwork) ? upgradeArtworkUrl(playingPl.artwork) : null) ||
+                     (!isPlaceholderArt(track.artwork) ? upgradeArtworkUrl(track.artwork) : null);
+    if (!artworkUrl && track.ytId && track.ytId !== 'fallback') {
+        artworkUrl = `https://i.ytimg.com/vi/${track.ytId}/maxresdefault.jpg`;
+    }
 
-    if (AppState.playbackState === 'PLAYING') {
-        coverDisc.classList.add('playing');
+    if (artworkUrl) {
+        if (artImg) {
+            artImg.src = artworkUrl;
+            artImg.className = 'absolute inset-0 w-full h-full object-cover object-center block';
+            artImg.onerror = () => {
+                if (artImg.src.includes('maxresdefault.jpg')) {
+                    artImg.src = artImg.src.replace('maxresdefault.jpg', 'hq720.jpg');
+                } else if (artImg.src.includes('hq720.jpg')) {
+                    artImg.src = artImg.src.replace('hq720.jpg', 'hqdefault.jpg');
+                } else {
+                    artImg.className = 'hidden';
+                    if (coverDisc) coverDisc.classList.remove('hidden');
+                }
+            };
+        }
+        if (coverDisc) coverDisc.classList.add('hidden');
     } else {
-        coverDisc.classList.remove('playing');
+        if (artImg) artImg.className = 'hidden';
+        if (coverDisc) {
+            coverDisc.classList.remove('hidden');
+            const color = (playingPl && playingPl.color) || track.labelColor || '#C85A32';
+            coverDisc.style.background = `radial-gradient(circle, ${color} 0%, ${color} 28%, #141413 30%, #242424 46%, #111 48%, #292929 65%, #111 70%, #1c1c1c 100%)`;
+            if (AppState.playbackState === 'PLAYING') {
+                coverDisc.classList.add('playing');
+            } else {
+                coverDisc.classList.remove('playing');
+            }
+        }
     }
 
     const iconPlay = document.getElementById('icon-play');
@@ -160,15 +223,31 @@ export function renderSidebarView() {
         document.getElementById('hero-playlist-meta').textContent = `${pl.trackIds.length} ${pl.trackIds.length === 1 ? 'song' : 'songs'} • ${formatTotalDuration(pl.trackIds)}`;
 
         const heroArt = document.getElementById('hero-playlist-artwork');
-        if (pl.artwork) {
-            heroArt.innerHTML = `<img src="${pl.artwork}" class="w-full h-full object-cover" alt="">`;
+        let displayArtwork = (!isPlaceholderArt(pl.artwork)) ? upgradeArtworkUrl(pl.artwork) : null;
+        if (!displayArtwork && Array.isArray(pl.trackIds)) {
+            for (const tid of pl.trackIds) {
+                const t = AppState.tracksById[tid];
+                if (t) {
+                    if (t.artwork && !isPlaceholderArt(t.artwork)) {
+                        displayArtwork = upgradeArtworkUrl(t.artwork);
+                        pl.artwork = displayArtwork;
+                        persistState();
+                        break;
+                    }
+                    if (t.ytId && t.ytId !== 'fallback') {
+                        displayArtwork = `https://i.ytimg.com/vi/${t.ytId}/maxresdefault.jpg`;
+                        pl.artwork = displayArtwork;
+                        persistState();
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (displayArtwork) {
+            heroArt.innerHTML = `<img src="${displayArtwork}" class="absolute inset-0 w-full h-full object-cover object-center block" alt="" onerror="if (this.src.includes('maxresdefault.jpg')) { this.src = this.src.replace('maxresdefault.jpg', 'hq720.jpg'); } else if (this.src.includes('hq720.jpg')) { this.src = this.src.replace('hq720.jpg', 'hqdefault.jpg'); } else { this.onerror=null; this.parentElement.innerHTML=\`${getHeroFallbackDiscHtml(pl).replace(/`/g, '\\`')}\`; }">`;
         } else {
-            heroArt.innerHTML = `
-                <div class="w-20 h-20 sm:w-22 sm:h-22 rounded-full border-4 border-neutral-800 flex items-center justify-center" style="background: radial-gradient(circle, ${pl.color || '#C85A32'} 0%, ${pl.color || '#C85A32'} 28%, #141413 30%, #222 45%, #111 47%, #292929 65%, #111 70%, #1c1c1c 100%);">
-                    <div class="w-2.5 h-2.5 rounded-full bg-alabaster"></div>
-                </div>
-                <div class="absolute inset-0 bg-gradient-to-tr from-black/30 via-transparent to-white/10 pointer-events-none"></div>
-            `;
+            heroArt.innerHTML = getHeroFallbackDiscHtml(pl);
         }
 
         const reorderBtn = document.getElementById('btn-toggle-reorder');
@@ -196,9 +275,26 @@ export function createPlaylistRow(pl) {
             : 'bg-transparent border-transparent hover:bg-alabaster/60 hover:border-stone/40'
     }`;
 
-    const artworkHtml = pl.artwork
+    let rowArt = (!isPlaceholderArt(pl.artwork)) ? upgradeArtworkUrl(pl.artwork) : null;
+    if (!rowArt && Array.isArray(pl.trackIds)) {
+        for (const tid of pl.trackIds) {
+            const t = AppState.tracksById[tid];
+            if (t) {
+                if (t.artwork && !isPlaceholderArt(t.artwork)) {
+                    rowArt = upgradeArtworkUrl(t.artwork);
+                    break;
+                }
+                if (t.ytId && t.ytId !== 'fallback') {
+                    rowArt = `https://i.ytimg.com/vi/${t.ytId}/maxresdefault.jpg`;
+                    break;
+                }
+            }
+        }
+    }
+
+    const artworkHtml = rowArt
         ? `<div class="w-10 h-10 rounded-xl overflow-hidden shrink-0 relative border border-stone">
-            <img src="${pl.artwork}" class="w-full h-full object-cover" alt="">
+            <img src="${rowArt}" class="absolute inset-0 w-full h-full object-cover object-center block" alt="" onerror="if (this.src.includes('maxresdefault.jpg')) { this.src = this.src.replace('maxresdefault.jpg', 'hq720.jpg'); } else if (this.src.includes('hq720.jpg')) { this.src = this.src.replace('hq720.jpg', 'hqdefault.jpg'); } else { this.parentElement.style.display='none'; }">
            </div>`
         : `<div class="w-10 h-10 rounded-xl bg-espresso flex items-center justify-center shrink-0 relative border border-stone">
             <div class="w-7 h-7 rounded-full flex items-center justify-center" style="background: radial-gradient(circle, ${pl.color || '#C85A32'} 0%, ${pl.color || '#C85A32'} 35%, #1E1B18 38%, #1E1B18 100%);">
@@ -214,6 +310,8 @@ export function createPlaylistRow(pl) {
             </div>
            </div>`;
 
+    const hasDownloading = pl.isDownloading || pl.trackIds.some(id => AppState.tracksById[id]?.isDownloading);
+
     row.innerHTML = `
         <div class="flex items-center gap-3.5 min-w-0 flex-1">
             ${artworkHtml}
@@ -221,7 +319,15 @@ export function createPlaylistRow(pl) {
                 <span class="text-sm font-medium ${isSelected ? 'text-terracotta font-semibold' : 'text-espresso'} truncate">
                     ${escapeHtml(pl.name)}
                 </span>
-                <span class="text-xs text-muted truncate">${pl.trackIds.length} ${pl.trackIds.length === 1 ? 'song' : 'songs'}</span>
+                <div class="flex items-center gap-1.5 min-w-0">
+                    <span class="text-xs text-muted truncate">${pl.trackIds.length} ${pl.trackIds.length === 1 ? 'song' : 'songs'}</span>
+                    ${hasDownloading ? `
+                        <span class="inline-flex items-center gap-1 font-mono text-[9px] text-terracotta bg-terracotta/10 px-1.5 py-0.5 rounded-full border border-terracotta/20 animate-pulse">
+                            <span class="w-1.5 h-1.5 rounded-full bg-terracotta"></span>
+                            <span>Downloading...</span>
+                        </span>
+                    ` : ''}
+                </div>
             </div>
         </div>
 
@@ -443,18 +549,21 @@ export function renderOpenedPlaylistTracks(pl) {
     const isReorderActive = AppState.isReorderMode && !query;
 
     filteredEntries.forEach(({ track, idx }) => {
+        const isDownloading = !!track.isDownloading;
         const isSelected = AppState.hasActiveSession && (pl.id === AppState.playingPlaylistId && idx === AppState.currentIndex);
         const isPlaying = isSelected && AppState.playbackState === 'PLAYING';
 
         const row = document.createElement('div');
         row.dataset.index = idx;
-        row.draggable = isReorderActive;
-        row.className = `group flex items-center justify-between px-3.5 py-2.5 rounded-2xl cursor-pointer transition-all border ${
-            isReorderActive
-                ? 'bg-alabaster/90 border-stone border-dashed cursor-move hover:border-terracotta'
-                : isSelected
-                    ? 'bg-alabaster border-stone shadow-sm'
-                    : 'bg-transparent border-transparent hover:bg-alabaster/60 hover:border-stone/40'
+        row.draggable = isReorderActive && !isDownloading;
+        row.className = `group flex items-center justify-between px-3.5 py-2.5 rounded-2xl transition-all border ${
+            isDownloading
+                ? 'opacity-55 cursor-not-allowed select-none bg-stone/20 border-transparent'
+                : isReorderActive
+                    ? 'bg-alabaster/90 border-stone border-dashed cursor-move hover:border-terracotta'
+                    : isSelected
+                        ? 'bg-alabaster border-stone shadow-sm cursor-pointer'
+                        : 'bg-transparent border-transparent hover:bg-alabaster/60 hover:border-stone/40 cursor-pointer'
         }`;
 
         row.innerHTML = `
@@ -473,18 +582,25 @@ export function renderOpenedPlaylistTracks(pl) {
 
                 <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 relative" style="background: radial-gradient(circle, ${track.labelColor} 0%, ${track.labelColor} 35%, #1E1B18 38%, #1E1B18 100%);">
                     ${
-                        isPlaying
-                            ? `<div class="flex items-end gap-0.5 h-3.5">
-                                <span class="w-0.5 bg-alabaster eq-bar-1"></span>
-                                <span class="w-0.5 bg-alabaster eq-bar-2"></span>
-                                <span class="w-0.5 bg-alabaster eq-bar-3"></span>
+                        isDownloading
+                            ? `<div class="w-4 h-4 flex items-center justify-center text-alabaster">
+                                <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                                </svg>
                                </div>`
-                            : `<div class="w-1.5 h-1.5 rounded-full bg-alabaster"></div>`
+                            : isPlaying
+                                ? `<div class="flex items-end gap-0.5 h-3.5">
+                                    <span class="w-0.5 bg-alabaster eq-bar-1"></span>
+                                    <span class="w-0.5 bg-alabaster eq-bar-2"></span>
+                                    <span class="w-0.5 bg-alabaster eq-bar-3"></span>
+                                   </div>`
+                                : `<div class="w-1.5 h-1.5 rounded-full bg-alabaster"></div>`
                     }
                 </div>
 
                 <div class="flex flex-col min-w-0 flex-1">
-                    <span class="text-sm font-medium ${isSelected ? 'text-terracotta font-semibold' : 'text-espresso'} truncate">
+                    <span class="text-sm font-medium ${isDownloading ? 'text-espresso/70' : isSelected ? 'text-terracotta font-semibold' : 'text-espresso'} truncate">
                         ${escapeHtml(track.title)}
                     </span>
                     <span class="text-xs text-muted truncate">${escapeHtml(track.artist)}</span>
@@ -493,32 +609,34 @@ export function renderOpenedPlaylistTracks(pl) {
 
             <div class="flex items-center gap-2 shrink-0 ml-2">
                 ${
-                    isReorderActive
-                        ? `
-                        <button class="btn-move-up p-1 rounded-lg bg-oatmeal hover:bg-stone text-espresso disabled:opacity-30 transition" ${idx === 0 ? 'disabled' : ''} title="Move Up">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/>
-                            </svg>
-                        </button>
-                        <button class="btn-move-down p-1 rounded-lg bg-oatmeal hover:bg-stone text-espresso disabled:opacity-30 transition" ${idx === pl.trackIds.length - 1 ? 'disabled' : ''} title="Move Down">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-                            </svg>
-                        </button>
-                        `
-                        : `
-                        <span class="font-mono text-xs text-muted">${formatTime(track.duration)}</span>
-                        <button class="btn-song-menu p-1.5 rounded-xl text-muted hover:text-espresso hover:bg-oatmeal transition" title="Song Options">
-                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                                <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
-                            </svg>
-                        </button>
-                        `
+                    isDownloading
+                        ? `<span class="font-mono text-[10px] text-terracotta tracking-wider uppercase font-medium animate-pulse">Downloading...</span>`
+                        : isReorderActive
+                            ? `
+                            <button class="btn-move-up p-1 rounded-lg bg-oatmeal hover:bg-stone text-espresso disabled:opacity-30 transition" ${idx === 0 ? 'disabled' : ''} title="Move Up">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/>
+                                </svg>
+                            </button>
+                            <button class="btn-move-down p-1 rounded-lg bg-oatmeal hover:bg-stone text-espresso disabled:opacity-30 transition" ${idx === pl.trackIds.length - 1 ? 'disabled' : ''} title="Move Down">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                                </svg>
+                            </button>
+                            `
+                            : `
+                            <span class="font-mono text-xs text-muted">${formatTime(track.duration)}</span>
+                            <button class="btn-song-menu p-1.5 rounded-xl text-muted hover:text-espresso hover:bg-oatmeal transition" title="Song Options">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                    <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+                                </svg>
+                            </button>
+                            `
                 }
             </div>
         `;
 
-        if (isReorderActive) {
+        if (isReorderActive && !isDownloading) {
             const upBtn = row.querySelector('.btn-move-up');
             const downBtn = row.querySelector('.btn-move-down');
             if (upBtn) {
@@ -578,6 +696,7 @@ export function renderOpenedPlaylistTracks(pl) {
         } else {
             row.addEventListener('click', (e) => {
                 if (e.target.closest('.btn-song-menu')) return;
+                if (track.isDownloading) return;
                 AppState.playingPlaylistId = pl.id;
                 selectAndPlayTrack(idx);
             });
@@ -644,12 +763,6 @@ export function openPlaylistContextMenu(triggerBtn, playlist) {
     const isDesktop = typeof window !== 'undefined' && !!window.spindleDesktop;
     const contextMenuEl = document.getElementById('context-menu');
     contextMenuEl.innerHTML = `
-        <button data-action="import-yt" class="w-full text-left px-3.5 py-2 hover:bg-oatmeal flex items-center gap-2.5 transition">
-            <svg class="w-3.5 h-3.5 text-terracotta" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-            </svg>
-            <span>Import from YouTube</span>
-        </button>
         <button data-action="rename" class="w-full text-left px-3.5 py-2 hover:bg-oatmeal flex items-center gap-2.5 transition">
             <span>Rename</span>
         </button>
@@ -671,10 +784,6 @@ export function openPlaylistContextMenu(triggerBtn, playlist) {
     `;
     positionContextMenu(triggerBtn);
 
-    contextMenuEl.querySelector('[data-action="import-yt"]').onclick = () => {
-        closeContextMenu();
-        showYoutubeImportModal(playlist.id);
-    };
     contextMenuEl.querySelector('[data-action="rename"]').onclick = () => {
         closeContextMenu();
         showRenamePlaylistModal(playlist);
@@ -691,7 +800,44 @@ export function openPlaylistContextMenu(triggerBtn, playlist) {
     }
     contextMenuEl.querySelector('[data-action="remove"]').onclick = () => {
         closeContextMenu();
-        removePlaylist(playlist.id);
+        showConfirmDeletePlaylistModal(playlist);
+    };
+}
+
+export function showConfirmDeletePlaylistModal(playlist) {
+    if (AppState.playlists.length <= 1) {
+        openModal('Cannot Delete', `
+            <div class="space-y-4">
+                <p class="text-sm text-espresso font-sans">You must keep at least one playlist in Spindle.</p>
+                <div class="pt-2 flex justify-end">
+                    <button type="button" id="btn-close-alert" class="px-5 py-2 rounded-xl bg-espresso text-alabaster text-xs font-medium transition">OK</button>
+                </div>
+            </div>
+        `);
+        document.getElementById('btn-close-alert').onclick = closeModal;
+        return;
+    }
+
+    const modalBody = document.getElementById('modal-body');
+    openModal('Delete Playlist', `
+        <div class="space-y-4">
+            <p class="text-sm text-espresso">
+                Are you sure you want to delete <strong class="font-semibold text-espresso">"${escapeHtml(playlist.name)}"</strong> from storage?
+            </p>
+            <p class="text-xs text-muted leading-relaxed">
+                This will permanently delete the playlist, its downloaded audio files, and all associated library data from your local device.
+            </p>
+            <div class="pt-3 flex justify-end gap-2">
+                <button type="button" id="btn-cancel-delete" class="px-4 py-2 rounded-xl text-xs font-medium text-muted hover:bg-oatmeal transition">Cancel</button>
+                <button type="button" id="btn-confirm-delete" class="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-alabaster text-xs font-medium transition shadow-sm">Delete from Storage</button>
+            </div>
+        </div>
+    `);
+
+    modalBody.querySelector('#btn-cancel-delete').onclick = closeModal;
+    modalBody.querySelector('#btn-confirm-delete').onclick = async () => {
+        closeModal();
+        await removePlaylist(playlist.id);
     };
 }
 
@@ -748,7 +894,7 @@ export function openSongContextMenu(triggerBtn, playlist, track, index) {
     };
 }
 
-export function removePlaylist(playlistId) {
+export async function removePlaylist(playlistId) {
     if (AppState.playlists.length <= 1) {
         alert('You must keep at least one playlist.');
         return;
@@ -756,8 +902,8 @@ export function removePlaylist(playlistId) {
     const idx = AppState.playlists.findIndex(p => p.id === playlistId);
     if (idx === -1) return;
 
+    const pl = AppState.playlists[idx];
     const wasPlaying = (AppState.playingPlaylistId === playlistId);
-    AppState.playlists.splice(idx, 1);
 
     if (wasPlaying) {
         stopPlayback();
@@ -765,12 +911,50 @@ export function removePlaylist(playlistId) {
         AppState.hasActiveSession = false;
         AppState.currentIndex = 0;
     }
+
+    // 1. Delete local music folder if running in Electron desktop
+    if (typeof window !== 'undefined' && window.spindleDesktop?.deletePlaylistFolder) {
+        try {
+            await window.spindleDesktop.deletePlaylistFolder(pl.name);
+        } catch (err) {
+            console.warn('Failed to delete playlist folder from disk:', err);
+        }
+    }
+
+    // 2. Identify unreferenced tracks and delete from IndexedDB & AppState
+    const otherTrackIds = new Set();
+    AppState.playlists.forEach(otherPl => {
+        if (otherPl.id !== playlistId) {
+            otherPl.trackIds.forEach(tid => otherTrackIds.add(tid));
+        }
+    });
+
+    for (const tid of pl.trackIds) {
+        if (!otherTrackIds.has(tid)) {
+            const track = AppState.tracksById[tid];
+            if (track && !track.isSynth) {
+                try {
+                    await storageDB.deleteAudioBlob(tid);
+                } catch (e) {
+                    console.warn('Error deleting audio blob:', e);
+                }
+                if (track.url && track.url.startsWith('blob:')) {
+                    URL.revokeObjectURL(track.url);
+                }
+                delete AppState.tracksById[tid];
+            }
+        }
+    }
+
+    // 3. Remove from playlist collection
+    AppState.playlists.splice(idx, 1);
+
     if (AppState.viewedPlaylistId === playlistId) {
         AppState.viewedPlaylistId = null;
         AppState.uiView = 'PLAYLISTS';
     }
 
-    persistState();
+    await persistState();
     renderSidebarView();
     updatePlayerUI();
 }
@@ -835,6 +1019,11 @@ export function showCreatePlaylistModal() {
                 <input id="input-pl-name" type="text" placeholder="e.g. Late Night Sessions" class="w-full px-3.5 py-2 rounded-xl bg-oatmeal/60 border border-stone text-sm text-espresso focus:outline-none focus:border-terracotta">
             </div>
             <div>
+                <label class="block font-mono text-[11px] uppercase text-muted mb-1">Import from YouTube / URL (Optional)</label>
+                <input id="input-pl-url" type="text" placeholder="https://youtube.com/playlist?list=... or song link" class="w-full px-3.5 py-2 rounded-xl bg-oatmeal/60 border border-stone text-xs text-espresso focus:outline-none focus:border-terracotta placeholder:text-muted/50" autocomplete="off" spellcheck="false">
+                <p class="font-mono text-[10px] text-muted mt-1">Leave empty to create manually, or paste a link to import in background.</p>
+            </div>
+            <div>
                 <label class="block font-mono text-[11px] uppercase text-muted mb-2">Artwork or Color</label>
                 <div class="flex items-center gap-3">
                     <div id="create-art-preview" class="w-14 h-14 rounded-2xl bg-espresso border border-stone overflow-hidden shrink-0 flex items-center justify-center">
@@ -860,6 +1049,7 @@ export function showCreatePlaylistModal() {
     `);
 
     const nameInput = modalBody.querySelector('#input-pl-name');
+    const urlInput = modalBody.querySelector('#input-pl-url');
     const preview = modalBody.querySelector('#create-art-preview');
     nameInput.focus();
 
@@ -883,21 +1073,35 @@ export function showCreatePlaylistModal() {
 
     modalBody.querySelector('#btn-cancel-modal').onclick = closeModal;
     const saveFn = () => {
-        const name = nameInput.value.trim() || `Playlist #${AppState.playlists.length + 1}`;
+        const url = urlInput ? urlInput.value.trim() : '';
+        const nameVal = nameInput.value.trim();
+        const name = nameVal || (url ? 'Importing Playlist...' : `Playlist #${AppState.playlists.length + 1}`);
         const newPl = {
             id: 'pl-' + Date.now(),
             name,
             color: selectedColor,
             artwork: customArtwork,
-            trackIds: []
+            trackIds: [],
+            isDownloading: !!url
         };
         AppState.playlists.push(newPl);
         persistState();
         closeModal();
         openPlaylist(newPl.id);
+
+        if (url) {
+            startBackgroundImport({
+                url,
+                targetPlaylistId: newPl.id,
+                playlistName: name
+            });
+        }
     };
     modalBody.querySelector('#btn-save-pl').onclick = saveFn;
     nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') saveFn();
+    });
+    urlInput?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') saveFn();
     });
 }
@@ -921,11 +1125,19 @@ export function showRenamePlaylistModal(playlist) {
     input.focus();
     input.select();
 
-    const saveFn = () => {
+    const saveFn = async () => {
         const val = input.value.trim();
-        if (val) {
+        if (val && val !== playlist.name) {
+            const oldName = playlist.name;
             playlist.name = val;
-            persistState();
+            if (typeof window !== 'undefined' && window.spindleDesktop?.renamePlaylistFolder) {
+                try {
+                    await window.spindleDesktop.renamePlaylistFolder({ oldName, newName: val });
+                } catch (err) {
+                    console.warn('Failed to rename playlist folder on disk:', err);
+                }
+            }
+            await persistState();
             renderSidebarView();
             updatePlayerUI();
         }
@@ -942,7 +1154,7 @@ export function showRenamePlaylistModal(playlist) {
 export function showChangePlaylistArtworkModal(playlist) {
     const modalBody = document.getElementById('modal-body');
     let chosenColor = playlist.color || VINYL_COLORS[0].label;
-    let chosenArtwork = playlist.artwork || null;
+    let chosenArtwork = (!isPlaceholderArt(playlist.artwork)) ? playlist.artwork : null;
 
     openModal('Change Playlist Artwork', `
         <div class="space-y-4">
@@ -1078,21 +1290,24 @@ export function showAddSongsModal(playlistId) {
 
     openModal(`Add Songs to ${pl.name}`, `
         <div class="space-y-4">
-            <div class="p-4 rounded-2xl bg-oatmeal/60 border border-stone flex items-center justify-between gap-3">
-                <div class="flex items-center gap-3 min-w-0">
-                    <div class="w-8 h-8 rounded-xl bg-terracotta/15 text-terracotta flex items-center justify-center shrink-0">
+            <div class="p-4 rounded-2xl bg-oatmeal/60 border border-stone space-y-2.5">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-7 h-7 rounded-lg bg-terracotta/15 text-terracotta flex items-center justify-center shrink-0">
                         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
                         </svg>
                     </div>
-                    <div class="min-w-0">
-                        <h4 class="font-medium text-sm text-espresso truncate">Import from YouTube / URL</h4>
-                        <p class="text-xs text-muted truncate mt-0.5">Paste link to extract high-quality audio.</p>
+                    <div>
+                        <h4 class="font-medium text-xs text-espresso">Import from YouTube / URL</h4>
+                        <p class="text-[11px] text-muted">Paste track or playlist link to download in background.</p>
                     </div>
                 </div>
-                <button type="button" id="btn-modal-import-yt" class="px-3.5 py-2 rounded-xl border border-stone bg-alabaster hover:bg-oatmeal text-espresso text-xs font-medium shrink-0 transition shadow-sm active:scale-95">
-                    Import URL
-                </button>
+                <div class="flex gap-2">
+                    <input id="input-modal-yt-url" type="text" placeholder="https://youtube.com/watch?v=... or playlist" class="flex-1 px-3 py-1.5 rounded-xl bg-alabaster border border-stone text-xs text-espresso focus:outline-none focus:border-terracotta placeholder:text-muted/50" autocomplete="off" spellcheck="false" />
+                    <button type="button" id="btn-modal-do-import-yt" class="px-4 py-1.5 rounded-xl bg-terracotta text-alabaster hover:bg-[#b04b25] text-xs font-medium transition shrink-0 active:scale-95 shadow-sm">
+                        Import
+                    </button>
+                </div>
             </div>
 
             <div class="p-4 rounded-2xl bg-oatmeal/60 border border-stone flex items-center justify-between gap-3">
@@ -1135,10 +1350,42 @@ export function showAddSongsModal(playlistId) {
         </div>
     `);
 
-    modalBody.querySelector('#btn-modal-import-yt').onclick = () => {
+    const triggerImport = () => {
+        const urlInput = modalBody.querySelector('#input-modal-yt-url');
+        const url = urlInput ? urlInput.value.trim() : '';
+        if (!url) return;
+
+        const tempId = `yt-pending-${Date.now()}`;
+        const palette = VINYL_COLORS[Object.keys(AppState.tracksById).length % VINYL_COLORS.length];
+        AppState.tracksById[tempId] = {
+            id: tempId,
+            title: 'Importing track...',
+            artist: 'YouTube',
+            duration: 180,
+            isSynth: false,
+            isDownloading: true,
+            url: null,
+            labelColor: palette.label,
+            accentColor: palette.accent
+        };
+        pl.trackIds.push(tempId);
+        pl.isDownloading = true;
+        persistState();
         closeModal();
-        showYoutubeImportModal(playlistId);
+        renderSidebarView();
+
+        startBackgroundImport({
+            url,
+            targetPlaylistId: pl.id,
+            playlistName: pl.name,
+            placeholderId: tempId
+        });
     };
+
+    modalBody.querySelector('#btn-modal-do-import-yt').onclick = triggerImport;
+    modalBody.querySelector('#input-modal-yt-url').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') triggerImport();
+    });
 
     modalBody.querySelector('#btn-modal-upload-files').onclick = () => {
         AppState.pendingAddSongsPlaylistId = playlistId;
@@ -1184,376 +1431,15 @@ export function showCopyTrackToPlaylistModal(track) {
     });
 }
 
-export async function showYoutubeImportModal(targetPlaylistId = null) {
-    const isDesktop = typeof window !== 'undefined' && !!window.spindleDesktop;
-    const destPlId = targetPlaylistId || AppState.viewedPlaylistId || (AppState.playlists[0] ? AppState.playlists[0].id : null);
-    let selectedPl = AppState.playlists.find(p => p.id === destPlId) || AppState.playlists[0];
-
-    if (!isDesktop) {
-        openModal('Import Audio from YouTube', `
-            <div class="space-y-4">
-                <div class="p-4 rounded-2xl bg-oatmeal/60 border border-stone/80 text-espresso space-y-2.5">
-                    <div class="flex items-center gap-2">
-                        <span class="w-2.5 h-2.5 rounded-full bg-terracotta"></span>
-                        <h4 class="font-serif text-lg font-medium text-espresso">Spindle Desktop App Feature</h4>
-                    </div>
-                    <p class="text-xs text-muted leading-relaxed">
-                        YouTube and YouTube Music audio extraction runs natively in the Spindle Desktop application. It uses local <code>yt-dlp</code> and <code>ffmpeg</code> to download high-resolution audio files (320kbps MP3) with embedded tags directly to <code>~/Music/Spindle/</code>.
-                    </p>
-                    <div class="p-3 rounded-xl bg-alabaster border border-stone/60 font-mono text-[11px] text-espresso select-all">
-                        npm run dev:desktop
-                    </div>
-                </div>
-                <div class="pt-2 flex justify-end gap-2">
-                    <button type="button" id="btn-browser-browse-files" class="px-4 py-2 rounded-xl border border-stone bg-oatmeal hover:bg-stone text-xs font-medium text-espresso transition">
-                        Browse Local Files
-                    </button>
-                    <button type="button" id="btn-close-modal" class="px-5 py-2 rounded-xl bg-terracotta text-alabaster text-xs font-medium transition shadow-sm">
-                        Close
-                    </button>
-                </div>
-            </div>
-        `);
-
-        document.getElementById('modal-body').querySelector('#btn-browser-browse-files').onclick = () => {
-            closeModal();
-            AppState.pendingAddSongsPlaylistId = destPlId;
-            document.getElementById('file-upload-audio').click();
-        };
-        document.getElementById('modal-body').querySelector('#btn-close-modal').onclick = closeModal;
-        return;
-    }
-
-    // Inside Electron Desktop
-    openModal('Import Audio from YouTube', `
-        <div class="space-y-4">
-            <div id="yt-checking-tools" class="flex items-center gap-2 text-xs font-mono text-muted py-2">
-                <span class="w-2 h-2 rounded-full bg-terracotta animate-ping"></span>
-                <span>Verifying audio download tools (yt-dlp &amp; ffmpeg)...</span>
-            </div>
-            <div id="yt-content-wrapper" class="hidden space-y-4">
-                <!-- Target playlist picker -->
-                <div>
-                    <label class="block font-mono text-[11px] uppercase text-muted mb-1">Add to Playlist</label>
-                    <select id="select-yt-playlist" class="w-full px-3 py-2 rounded-xl bg-oatmeal/60 border border-stone text-xs text-espresso focus:outline-none focus:border-terracotta">
-                        ${AppState.playlists.map(p => `
-                            <option value="${p.id}" ${p.id === (selectedPl ? selectedPl.id : '') ? 'selected' : ''}>
-                                ${escapeHtml(p.name)} (${p.trackIds.length} songs)
-                            </option>
-                        `).join('')}
-                    </select>
-                </div>
-
-                <!-- URL input -->
-                <div>
-                    <label class="block font-mono text-[11px] uppercase text-muted mb-1">YouTube / YouTube Music URL</label>
-                    <div class="flex gap-2">
-                        <input 
-                            id="input-yt-url" 
-                            type="text" 
-                            placeholder="https://www.youtube.com/watch?v=... or youtu.be" 
-                            class="flex-1 px-3.5 py-2 rounded-xl bg-oatmeal/60 border border-stone text-xs text-espresso focus:outline-none focus:border-terracotta"
-                            autocomplete="off"
-                            spellcheck="false"
-                        />
-                        <button type="button" id="btn-fetch-yt-info" class="px-3.5 py-2 rounded-xl bg-stone/60 hover:bg-stone text-espresso text-xs font-mono font-medium transition active:scale-95 shrink-0">
-                            Fetch Info
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Info Loading Indicator -->
-                <div id="yt-loading-card" class="hidden items-center justify-center gap-2 py-6 px-4 rounded-2xl bg-oatmeal/40 border border-stone/60 text-xs font-mono text-muted">
-                    <span class="w-2.5 h-2.5 rounded-full bg-terracotta animate-bounce"></span>
-                    <span>Fetching metadata from YouTube...</span>
-                </div>
-
-                <!-- Preview Card -->
-                <div id="yt-preview-card" class="hidden p-3.5 rounded-2xl bg-alabaster border border-stone/80 gap-3.5 shadow-sm items-center">
-                    <div id="yt-thumb-box" class="w-16 h-16 rounded-xl bg-espresso border border-stone overflow-hidden shrink-0 flex items-center justify-center">
-                        <img id="yt-thumb-img" src="" class="w-full h-full object-cover">
-                    </div>
-                    <div class="min-w-0 flex-1 space-y-1.5">
-                        <div>
-                            <label class="block font-mono text-[9px] uppercase text-muted">Song Title</label>
-                            <input id="input-yt-title" type="text" class="w-full px-2.5 py-1 rounded-lg bg-oatmeal/60 border border-stone/70 text-xs font-medium text-espresso focus:outline-none focus:border-terracotta">
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <div class="flex-1">
-                                <label class="block font-mono text-[9px] uppercase text-muted">Artist</label>
-                                <input id="input-yt-artist" type="text" class="w-full px-2.5 py-1 rounded-lg bg-oatmeal/60 border border-stone/70 text-xs text-espresso focus:outline-none focus:border-terracotta">
-                            </div>
-                            <div class="shrink-0 text-right">
-                                <label class="block font-mono text-[9px] uppercase text-muted">Duration</label>
-                                <span id="yt-duration-badge" class="font-mono text-xs text-espresso">00:00</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Real-time Progress Bar -->
-                <div id="yt-progress-box" class="hidden p-4 rounded-2xl bg-oatmeal/60 border border-stone space-y-2">
-                    <div class="flex items-center justify-between text-xs font-mono">
-                        <span id="yt-progress-stage" class="text-espresso font-medium flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full bg-terracotta animate-pulse"></span>
-                            <span>Downloading audio...</span>
-                        </span>
-                        <span id="yt-progress-percent" class="text-terracotta font-semibold">0%</span>
-                    </div>
-                    <div class="w-full h-2 bg-stone/70 rounded-full overflow-hidden">
-                        <div id="yt-progress-bar" class="h-full bg-terracotta transition-all duration-150 rounded-full" style="width: 0%;"></div>
-                    </div>
-                    <p id="yt-progress-detail" class="font-mono text-[10px] text-muted truncate"></p>
-                </div>
-
-                <!-- Error Container -->
-                <div id="yt-error-box" class="hidden p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-600 text-xs font-mono break-words leading-relaxed"></div>
-
-                <!-- Action Buttons -->
-                <div class="pt-2 flex justify-end gap-2" id="yt-actions">
-                    <button type="button" id="btn-cancel-yt" class="px-4 py-2 rounded-xl text-xs font-medium text-muted hover:bg-oatmeal transition">
-                        Cancel
-                    </button>
-                    <button type="button" id="btn-submit-yt" class="cursor-pointer inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-terracotta text-alabaster hover:bg-[#b04b25] text-xs font-medium transition shadow-sm active:scale-95 disabled:opacity-50 disabled:pointer-events-none">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 18h16"/>
-                        </svg>
-                        <span id="btn-submit-yt-label">Import Audio</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    `);
-
-    const modalBody = document.getElementById('modal-body');
-    const checkingEl = modalBody.querySelector('#yt-checking-tools');
-    const contentEl = modalBody.querySelector('#yt-content-wrapper');
-
-    let tools = { hasYtdlp: false, hasFfmpeg: false };
-    try {
-        tools = await window.spindleDesktop.checkTools();
-    } catch (_) {}
-
-    if (!tools.hasYtdlp || !tools.hasFfmpeg) {
-        checkingEl.innerHTML = `
-            <div class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-espresso space-y-2 w-full">
-                <h4 class="font-medium text-sm text-amber-800">Prerequisites Required</h4>
-                <p class="text-xs text-muted leading-relaxed">
-                    YouTube audio extraction requires <code>yt-dlp</code> and <code>ffmpeg</code> installed on your system.
-                </p>
-                <div class="p-2.5 rounded-xl bg-alabaster border border-stone font-mono text-[11px] select-all">
-                    sudo apt update &amp;&amp; sudo apt install -y ffmpeg yt-dlp
-                </div>
-                <div class="pt-2 flex justify-end">
-                    <button type="button" id="btn-close-tools" class="px-4 py-1.5 rounded-xl bg-stone/70 hover:bg-stone text-espresso text-xs font-medium">Close</button>
-                </div>
-            </div>
-        `;
-        checkingEl.querySelector('#btn-close-tools')?.addEventListener('click', closeModal);
-        return;
-    }
-
-    checkingEl.classList.add('hidden');
-    contentEl.classList.remove('hidden');
-
-    const selectPl = modalBody.querySelector('#select-yt-playlist');
-    const urlInput = modalBody.querySelector('#input-yt-url');
-    const fetchBtn = modalBody.querySelector('#btn-fetch-yt-info');
-    const loadingCard = modalBody.querySelector('#yt-loading-card');
-    const previewCard = modalBody.querySelector('#yt-preview-card');
-    const thumbImg = modalBody.querySelector('#yt-thumb-img');
-    const titleInput = modalBody.querySelector('#input-yt-title');
-    const artistInput = modalBody.querySelector('#input-yt-artist');
-    const durationBadge = modalBody.querySelector('#yt-duration-badge');
-    const progressBox = modalBody.querySelector('#yt-progress-box');
-    const progressBar = modalBody.querySelector('#yt-progress-bar');
-    const progressStage = modalBody.querySelector('#yt-progress-stage');
-    const progressPercent = modalBody.querySelector('#yt-progress-percent');
-    const progressDetail = modalBody.querySelector('#yt-progress-detail');
-    const errorBox = modalBody.querySelector('#yt-error-box');
-    const cancelBtn = modalBody.querySelector('#btn-cancel-yt');
-    const submitBtn = modalBody.querySelector('#btn-submit-yt');
-    const submitLabel = modalBody.querySelector('#btn-submit-yt-label');
-
-    urlInput.focus();
-
-    let fetchedMetadata = null;
-    let isFetching = false;
-    let isDownloading = false;
-
-    async function fetchInfo() {
-        const url = urlInput.value.trim();
-        if (!url || isFetching || isDownloading) return;
-
-        errorBox.classList.add('hidden');
-        errorBox.textContent = '';
-        isFetching = true;
-        fetchBtn.disabled = true;
-        loadingCard.classList.remove('hidden');
-        loadingCard.classList.add('flex');
-        previewCard.classList.add('hidden');
-        previewCard.classList.remove('flex');
-
-        try {
-            const data = await window.spindleDesktop.getYoutubeInfo(url);
-            fetchedMetadata = data;
-            titleInput.value = data.title || '';
-            artistInput.value = data.artist || '';
-            durationBadge.textContent = formatTime(data.duration || 0);
-
-            if (data.thumbnail) {
-                thumbImg.src = data.thumbnail;
-                thumbImg.classList.remove('hidden');
-            } else {
-                thumbImg.classList.add('hidden');
-            }
-
-            loadingCard.classList.add('hidden');
-            loadingCard.classList.remove('flex');
-            previewCard.classList.remove('hidden');
-            previewCard.classList.add('flex');
-            submitLabel.textContent = 'Import & Play';
-        } catch (err) {
-            loadingCard.classList.add('hidden');
-            loadingCard.classList.remove('flex');
-            errorBox.textContent = `Could not fetch video info: ${err.message || err}`;
-            errorBox.classList.remove('hidden');
-        } finally {
-            isFetching = false;
-            fetchBtn.disabled = false;
-        }
-    }
-
-    fetchBtn.addEventListener('click', fetchInfo);
-
-    urlInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            if (!fetchedMetadata) {
-                fetchInfo();
-            } else {
-                startDownload();
-            }
-        }
-    });
-
-    urlInput.addEventListener('paste', () => {
-        setTimeout(fetchInfo, 100);
-    });
-
-    cancelBtn.addEventListener('click', closeModal);
-
-    async function startDownload() {
-        const url = urlInput.value.trim();
-        if (!url || isDownloading) return;
-
-        const targetPl = AppState.playlists.find(p => p.id === selectPl.value) || AppState.playlists[0];
-        if (!targetPl) return;
-
-        isDownloading = true;
-        urlInput.disabled = true;
-        fetchBtn.disabled = true;
-        selectPl.disabled = true;
-        cancelBtn.disabled = true;
-        submitBtn.disabled = true;
-        errorBox.classList.add('hidden');
-
-        progressBox.classList.remove('hidden');
-        progressBar.style.width = '0%';
-        progressPercent.textContent = '0%';
-        progressStage.innerHTML = `<span class="w-2 h-2 rounded-full bg-terracotta animate-pulse"></span><span>Starting download...</span>`;
-        progressDetail.textContent = 'Connecting to stream servers...';
-
-        const unsubscribe = window.spindleDesktop.onDownloadProgress((prog) => {
-            if (prog.percent !== undefined) {
-                const pct = Math.round(prog.percent);
-                progressBar.style.width = `${pct}%`;
-                progressPercent.textContent = `${pct}%`;
-            }
-            if (prog.message) {
-                progressStage.innerHTML = `<span class="w-2 h-2 rounded-full bg-terracotta animate-pulse"></span><span>${escapeHtml(prog.message)}</span>`;
-            }
-            if (prog.speed && prog.eta) {
-                progressDetail.textContent = `Speed: ${prog.speed} • ETA: ${prog.eta} • Total: ${prog.size || ''}`;
-            }
-        });
-
-        try {
-            const customTitle = titleInput.value.trim() || (fetchedMetadata && fetchedMetadata.title) || null;
-            const customArtist = artistInput.value.trim() || (fetchedMetadata && fetchedMetadata.artist) || null;
-
-            const res = await window.spindleDesktop.downloadYoutubeTrack({
-                url,
-                playlistName: targetPl.name,
-                customTitle,
-                customArtist,
-                thumbnail: fetchedMetadata ? fetchedMetadata.thumbnail : null,
-                duration: fetchedMetadata ? fetchedMetadata.duration : null
-            });
-
-            if (!res || !res.success) {
-                throw new Error('Download did not return success.');
-            }
-
-            unsubscribe();
-
-            // Track creation
-            const id = `yt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-            const palette = VINYL_COLORS[Object.keys(AppState.tracksById).length % VINYL_COLORS.length];
-            const newTrack = {
-                id,
-                title: res.title || customTitle || 'Track',
-                artist: res.artist || customArtist || 'Unknown Artist',
-                duration: res.duration || 180,
-                isSynth: false,
-                url: res.url,
-                filePath: res.filePath,
-                artwork: res.thumbnail || null,
-                labelColor: palette.label,
-                accentColor: palette.accent
-            };
-
-            AppState.tracksById[id] = newTrack;
-            const insertIndex = targetPl.trackIds.length;
-            targetPl.trackIds.push(id);
-            await persistState();
-
-            closeModal();
-            openPlaylist(targetPl.id);
-            AppState.playingPlaylistId = targetPl.id;
-            selectAndPlayTrack(insertIndex);
-
-        } catch (err) {
-            unsubscribe();
-            isDownloading = false;
-            urlInput.disabled = false;
-            fetchBtn.disabled = false;
-            selectPl.disabled = false;
-            cancelBtn.disabled = false;
-            submitBtn.disabled = false;
-            progressBox.classList.add('hidden');
-            errorBox.textContent = `Import failed: ${err.message || err}`;
-            errorBox.classList.remove('hidden');
-        }
-    }
-
-    submitBtn.addEventListener('click', () => {
-        if (!fetchedMetadata && urlInput.value.trim()) {
-            fetchInfo().then(() => {
-                if (fetchedMetadata) startDownload();
-            });
-        } else {
-            startDownload();
-        }
-    });
-}
-
 // Playback Actions
 export function selectAndPlayTrack(index) {
     const pl = getPlayingPlaylist();
     if (!pl || !pl.trackIds.length) return;
 
     const boundedIdx = Math.max(0, Math.min(index, pl.trackIds.length - 1));
+    const targetTrack = AppState.tracksById[pl.trackIds[boundedIdx]];
+    if (!targetTrack || targetTrack.isDownloading) return;
+
     const isSameTrack = AppState.hasActiveSession && boundedIdx === AppState.currentIndex && AppState.playbackState !== 'STOPPED';
     AppState.currentIndex = boundedIdx;
     AppState.hasActiveSession = true;
@@ -1571,27 +1457,35 @@ export function selectAndPlayTrack(index) {
         }
         if (isSameTrack && turntable3D.mechState === 'PAUSED') {
             turntable3D.mechState = 'PLAYING';
+            audioEngine.playTrack(track, 0);
         } else {
-            turntable3D.triggerTrackChange(track, true);
+            turntable3D.triggerTrackChange(track, true, 0);
         }
+    } else {
+        audioEngine.playTrack(track, 0);
     }
 
-    audioEngine.playTrack(track, 0);
     renderSidebarView();
     updatePlayerUI();
 }
 
 export function togglePlayPause() {
     let track = getCurrentTrack();
-    if (!track) {
+    if (!track || track.isDownloading) {
         const pl = getViewedPlaylist() || AppState.playlists[0];
         if (pl && pl.trackIds.length > 0) {
-            AppState.playingPlaylistId = pl.id;
-            AppState.currentIndex = 0;
-            track = getCurrentTrack();
+            const firstPlayableIdx = pl.trackIds.findIndex(id => {
+                const t = AppState.tracksById[id];
+                return t && !t.isDownloading;
+            });
+            if (firstPlayableIdx !== -1) {
+                AppState.playingPlaylistId = pl.id;
+                AppState.currentIndex = firstPlayableIdx;
+                track = getCurrentTrack();
+            }
         }
     }
-    if (!track) return;
+    if (!track || track.isDownloading) return;
 
     AppState.hasActiveSession = true;
 
@@ -1614,9 +1508,10 @@ export function togglePlayPause() {
             if (AppState.uiView === 'PLAYLIST_DETAIL') {
                 turntable3D.setCameraView('top');
             }
-            turntable3D.triggerTrackChange(track, true);
+            turntable3D.triggerTrackChange(track, true, AppState.currentTime || 0);
+        } else {
+            audioEngine.playTrack(track, AppState.currentTime);
         }
-        audioEngine.playTrack(track, AppState.currentTime);
     }
 
     renderSidebarView();
@@ -1645,15 +1540,6 @@ export function handleTrackEnded() {
         return;
     }
 
-    if (AppState.shuffleEnabled && pl.trackIds.length > 1) {
-        let nextIdx = AppState.currentIndex;
-        while (nextIdx === AppState.currentIndex) {
-            nextIdx = Math.floor(Math.random() * pl.trackIds.length);
-        }
-        selectAndPlayTrack(nextIdx);
-        return;
-    }
-
     const isLast = AppState.currentIndex >= pl.trackIds.length - 1;
     if (isLast && AppState.repeatMode === 'OFF') {
         stopPlayback();
@@ -1666,17 +1552,31 @@ export function playNextTrack() {
     const pl = getPlayingPlaylist();
     if (!pl || !pl.trackIds.length) return;
 
-    if (AppState.shuffleEnabled && pl.trackIds.length > 1) {
-        let nextIdx = AppState.currentIndex;
-        while (nextIdx === AppState.currentIndex) {
-            nextIdx = Math.floor(Math.random() * pl.trackIds.length);
-        }
-        selectAndPlayTrack(nextIdx);
+    const playableIndices = pl.trackIds
+        .map((tid, i) => ({ tid, i }))
+        .filter(({ tid }) => {
+            const t = AppState.tracksById[tid];
+            return t && !t.isDownloading;
+        });
+
+    if (playableIndices.length === 0) return;
+
+    if (AppState.shuffleEnabled && playableIndices.length > 1) {
+        let pool = playableIndices.filter(p => p.i !== AppState.currentIndex);
+        if (pool.length === 0) pool = playableIndices;
+        const picked = pool[Math.floor(Math.random() * pool.length)];
+        selectAndPlayTrack(picked.i);
         return;
     }
 
-    const nextIdx = (AppState.currentIndex + 1) % pl.trackIds.length;
-    selectAndPlayTrack(nextIdx);
+    for (let offset = 1; offset <= pl.trackIds.length; offset++) {
+        const nextIdx = (AppState.currentIndex + offset) % pl.trackIds.length;
+        const t = AppState.tracksById[pl.trackIds[nextIdx]];
+        if (t && !t.isDownloading) {
+            selectAndPlayTrack(nextIdx);
+            return;
+        }
+    }
 }
 
 export function playPrevTrack() {
@@ -1688,8 +1588,15 @@ export function playPrevTrack() {
         updatePlayerUI();
         return;
     }
-    const prevIdx = (AppState.currentIndex - 1 + pl.trackIds.length) % pl.trackIds.length;
-    selectAndPlayTrack(prevIdx);
+
+    for (let offset = 1; offset <= pl.trackIds.length; offset++) {
+        const prevIdx = (AppState.currentIndex - offset + pl.trackIds.length) % pl.trackIds.length;
+        const t = AppState.tracksById[pl.trackIds[prevIdx]];
+        if (t && !t.isDownloading) {
+            selectAndPlayTrack(prevIdx);
+            return;
+        }
+    }
 }
 
 export async function handleLocalFiles(fileList, targetPlaylistId = null) {

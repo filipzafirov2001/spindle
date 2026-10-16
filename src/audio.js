@@ -16,6 +16,8 @@ export class SoundEngine {
         this.lastLiftTime = 0;
         this.lastDropTime = 0;
 
+        this.pendingStartTime = 0;
+
         if (this.htmlAudio) {
             this.bindAudioEvents();
         }
@@ -38,14 +40,26 @@ export class SoundEngine {
             }
         });
 
+        const applyPendingSeek = () => {
+            if (this.pendingStartTime > 0 && this.htmlAudio && !isNaN(this.htmlAudio.duration)) {
+                try {
+                    this.htmlAudio.currentTime = Math.min(this.pendingStartTime, this.htmlAudio.duration);
+                } catch (_) {}
+                this.pendingStartTime = 0;
+            }
+        };
+
         this.htmlAudio.addEventListener('loadedmetadata', () => {
             const track = getCurrentTrack();
             if (track && !track.isSynth && this.htmlAudio.duration && !isNaN(this.htmlAudio.duration)) {
                 track.duration = this.htmlAudio.duration;
                 AppState.duration = this.htmlAudio.duration;
+                applyPendingSeek();
                 if (this.onLoadedMetadata) this.onLoadedMetadata();
             }
         });
+
+        this.htmlAudio.addEventListener('canplay', applyPendingSeek);
 
         this.htmlAudio.addEventListener('ended', () => {
             if (this.onEnded) this.onEnded();
@@ -125,10 +139,16 @@ export class SoundEngine {
             this.startSynthSequencer(track.synthPreset);
         } else {
             if (this.htmlAudio) {
-                if (this.htmlAudio.src !== track.url) {
+                const srcChanged = this.htmlAudio.src !== track.url;
+                if (srcChanged) {
                     this.htmlAudio.src = track.url;
+                    this.pendingStartTime = startTime;
+                } else {
+                    try {
+                        this.htmlAudio.currentTime = startTime;
+                    } catch (_) {}
+                    this.pendingStartTime = 0;
                 }
-                this.htmlAudio.currentTime = startTime;
                 this.htmlAudio.volume = AppState.isMuted ? 0 : AppState.volume;
                 this.htmlAudio.play().catch(() => {});
             }
@@ -162,9 +182,20 @@ export class SoundEngine {
     seek(seconds) {
         const track = getCurrentTrack();
         if (!track) return;
-        AppState.currentTime = seconds;
+        const bounded = Math.max(0, Math.min(seconds, AppState.duration || seconds));
+        AppState.currentTime = bounded;
         if (!track.isSynth && this.htmlAudio) {
-            this.htmlAudio.currentTime = seconds;
+            try {
+                if (this.htmlAudio.readyState >= 1) {
+                    this.htmlAudio.currentTime = bounded;
+                    this.pendingStartTime = 0;
+                } else {
+                    this.pendingStartTime = bounded;
+                }
+            } catch (err) {
+                console.warn('Seek error:', err);
+                this.pendingStartTime = bounded;
+            }
         }
     }
 

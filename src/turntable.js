@@ -65,6 +65,7 @@ export class Turntable3D {
         this.powerSwitchAngle = -0.35;
         this.dustCoverOpen = !this.introMode;
         this.dustCoverAngle = this.introMode ? 0.0 : 1.02;
+        this.cueLowering = false;
 
         // Interactive Tonearm & Needle Dragging State
         this.isDraggingTonearm = false;
@@ -1449,20 +1450,25 @@ export class Turntable3D {
         this.vinylMat.needsUpdate = true;
     }
 
-    triggerTrackChange(track, autoPlay = true) {
+    triggerTrackChange(track, autoPlay = true, startSec = 0) {
         if (!track) return;
+        this.cueLowering = false;
+        this.pendingTrack = track;
+        this.pendingAutoPlay = autoPlay;
+        this.pendingStartSec = startSec;
+
         if (this.mechState === 'IDLE_STOPPED') {
             this.updateRecordLabel(track);
             this.recordHeight = 2.0;
             if (autoPlay) {
+                audioEngine.stopAllAudioOnly();
                 this.mechState = 'DROPPING_RECORD';
             }
         } else {
-            if (this.mechState === 'PLAYING' || this.armPitch < 0.05) {
+            if (this.mechState === 'PLAYING' || this.armPitch < 0.025) {
                 audioEngine.playNeedleLiftSound();
             }
-            this.pendingTrack = track;
-            this.pendingAutoPlay = autoPlay;
+            audioEngine.stopAllAudioOnly();
             this.mechState = 'SWAPPING_OUT';
         }
     }
@@ -1571,6 +1577,7 @@ export class Turntable3D {
                         if (this.pendingTrack) {
                             this.updateRecordLabel(this.pendingTrack);
                         }
+                        this.cueLowering = false;
                         this.mechState = this.pendingAutoPlay ? 'DROPPING_RECORD' : 'IDLE_STOPPED';
                     }
                 }
@@ -1582,6 +1589,7 @@ export class Turntable3D {
                 this.armPitch += (0.15 - this.armPitch) * 8 * dt;
                 if (this.recordHeight < 0.03) {
                     this.recordHeight = 0;
+                    this.cueLowering = false;
                     this.mechState = 'CUIING_ARM';
                 }
                 break;
@@ -1589,14 +1597,30 @@ export class Turntable3D {
             case 'CUIING_ARM':
                 this.targetRPM = AppState.rpmMode;
                 this.powerSwitchAngle += (0.35 - this.powerSwitchAngle) * 8 * dt;
-                this.armPitch += (0.15 - this.armPitch) * 9 * dt;
-                this.armYaw += (grooveYaw - this.armYaw) * 6 * dt;
+                this.armYaw += (grooveYaw - this.armYaw) * 7 * dt;
 
-                if (Math.abs(this.armYaw - grooveYaw) < 0.015) {
-                    this.armPitch += (0.02 - this.armPitch) * 6 * dt;
-                    if (this.armPitch < 0.035) {
+                if (!this.cueLowering) {
+                    this.armPitch += (0.15 - this.armPitch) * 9 * dt;
+                    if (Math.abs(this.armYaw - grooveYaw) < 0.025) {
+                        this.cueLowering = true;
+                    }
+                } else {
+                    this.armPitch += (0.0044 - this.armPitch) * 7 * dt;
+                    if (this.armPitch < 0.012) {
                         audioEngine.playNeedleDropSound();
+                        this.cueLowering = false;
                         this.mechState = 'PLAYING';
+                        if (this.pendingAutoPlay && this.pendingTrack) {
+                            const trackToPlay = this.pendingTrack;
+                            const sec = this.pendingStartSec || 0;
+                            this.pendingTrack = null;
+                            AppState.hasActiveSession = true;
+                            AppState.playbackState = 'PLAYING';
+                            AppState.currentTime = sec;
+                            audioEngine.playTrack(trackToPlay, sec);
+                            renderSidebarView();
+                            updatePlayerUI();
+                        }
                     }
                 }
                 break;
@@ -1611,8 +1635,8 @@ export class Turntable3D {
                 this.targetRPM = AppState.rpmMode;
                 this.powerSwitchAngle += (0.35 - this.powerSwitchAngle) * 8 * dt;
                 this.armYaw += (this.dropGrooveYaw - this.armYaw) * 10 * dt;
-                this.armPitch += (0.018 - this.armPitch) * 7 * dt;
-                if (this.armPitch < 0.035) {
+                this.armPitch += (0.0044 - this.armPitch) * 7 * dt;
+                if (this.armPitch < 0.012) {
                     this.mechState = 'PLAYING';
                 }
                 break;
@@ -1641,14 +1665,14 @@ export class Turntable3D {
                 this.targetRPM = AppState.rpmMode;
                 this.powerSwitchAngle += (0.35 - this.powerSwitchAngle) * 8 * dt;
                 this.recordHeight += (0.0 - this.recordHeight) * 10 * dt;
-                const microFlutter = Math.sin(elapsed * 28) * 0.0012;
-                this.armPitch += ((0.018 + microFlutter) - this.armPitch) * 10 * dt;
+                const microFlutter = Math.sin(elapsed * 28) * 0.0008;
+                this.armPitch += ((0.0044 + microFlutter) - this.armPitch) * 10 * dt;
                 this.armYaw += (grooveYaw - this.armYaw) * 5 * dt;
                 break;
 
             case 'PAUSED':
                 this.targetRPM = 0;
-                this.armPitch += (0.11 - this.armPitch) * 8 * dt;
+                this.armPitch += (0.06 - this.armPitch) * 8 * dt;
                 this.armYaw += (grooveYaw - this.armYaw) * 5 * dt;
                 break;
 
@@ -1843,7 +1867,7 @@ export class Turntable3D {
                     this.dustCoverOpen = true;
                 }
 
-                const wasDownOnRecord = (this.mechState === 'PLAYING' || (this.armPitch < 0.05 && this.armYaw > 0.35));
+                const wasDownOnRecord = (this.mechState === 'PLAYING' || (this.armPitch < 0.025 && this.armYaw > 0.35));
                 if (wasDownOnRecord || AppState.playbackState === 'PLAYING') {
                     audioEngine.playNeedleLiftSound();
                     this.wasPlayingBeforeDrag = (AppState.playbackState === 'PLAYING');

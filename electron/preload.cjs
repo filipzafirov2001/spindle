@@ -4,14 +4,34 @@ contextBridge.exposeInMainWorld('spindleDesktop', {
     isDesktop: true,
     getAppInfo: () => ipcRenderer.invoke('spindle:get-app-info'),
     checkTools: () => ipcRenderer.invoke('spindle:check-tools'),
-    getYoutubeInfo: (url) => ipcRenderer.invoke('spindle:youtube-info', url),
-    downloadYoutubeTrack: (params) => ipcRenderer.invoke('spindle:youtube-download', params),
-    onDownloadProgress: (callback) => {
+    inspectYoutube: (url) => ipcRenderer.invoke('spindle:youtube-inspect', url),
+    startImport: (params) => ipcRenderer.invoke('spindle:start-import', params),
+    onImportDiscovered: (callback) => {
         const handler = (_event, data) => callback(data);
-        ipcRenderer.on('spindle:download-progress', handler);
-        return () => {
-            ipcRenderer.removeListener('spindle:download-progress', handler);
-        };
+        ipcRenderer.on('spindle:import-discovered', handler);
+        return () => ipcRenderer.removeListener('spindle:import-discovered', handler);
     },
-    openMusicFolder: (subPath) => ipcRenderer.invoke('spindle:open-music-folder', subPath)
+    onImportProgress: (callback) => {
+        const handler = (_event, data) => callback(data);
+        ipcRenderer.on('spindle:import-progress', handler);
+        return () => ipcRenderer.removeListener('spindle:import-progress', handler);
+    },
+    onTrackReady: (callback) => {
+        const handler = (_event, data) => callback(data);
+        ipcRenderer.on('spindle:track-ready', handler);
+        return () => ipcRenderer.removeListener('spindle:track-ready', handler);
+    },
+    onImportCompleted: (callback) => {
+        const handler = (_event, data) => callback(data);
+        ipcRenderer.on('spindle:import-completed', handler);
+        return () => ipcRenderer.removeListener('spindle:import-completed', handler);
+    },
+    onImportError: (callback) => {
+        const handler = (_event, data) => callback(data);
+        ipcRenderer.on('spindle:import-error', handler);
+        return () => ipcRenderer.removeListener('spindle:import-error', handler);
+    },
+    openMusicFolder: (subPath) => ipcRenderer.invoke('spindle:open-music-folder', subPath),
+    renamePlaylistFolder: (params) => ipcRenderer.invoke('spindle:rename-playlist-folder', params),
+    deletePlaylistFolder: (folderName) => ipcRenderer.invoke('spindle:delete-playlist-folder', folderName)
 });
